@@ -1,11 +1,11 @@
 // Single source of truth for everything the plugin downloads.
-// Keep this in sync with the "Downloads" section of plugin/README.md.
+// Keep this in sync with the "Downloads and privacy" section of plugin/README.md.
 
 export const PLUGIN_ID = "local-whisper-transcribe";
 
 export const RELEASE_REPO = "hendemic/obsidian-transcription";
 
-export type AssetId = "model" | "vad" | "coreml" | "sidecar";
+export type AssetId = "model" | "vad" | "paragraph-model" | "paragraph-tokenizer" | "coreml" | "sidecar";
 
 export interface FileAssetConfig {
 	label: string;
@@ -31,6 +31,28 @@ export const VAD_MODEL: FileAssetConfig = {
 	fileName: "ggml-silero-v5.1.2.bin",
 	sizeBytes: 885_098,
 	sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+};
+
+const PARAGRAPH_REPO = "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main";
+
+/**
+ * Sentence-embedding model (~50 languages) the engine uses to break paragraphs where the topic
+ * shifts. The int8 export runs on any CPU; the "arm64" in its name is only the quantization recipe.
+ */
+export const PARAGRAPH_MODEL: FileAssetConfig = {
+	label: "Paragraph model (multilingual MiniLM)",
+	url: `${PARAGRAPH_REPO}/onnx/model_qint8_arm64.onnx`,
+	fileName: "paragraph-minilm-l12-int8.onnx",
+	sizeBytes: 118_412_398,
+	sha256: "783fea82d71a58179b830a4dbd2d58447e640609e98eedf9ffa12622d375a672",
+};
+
+export const PARAGRAPH_TOKENIZER: FileAssetConfig = {
+	label: "Paragraph model tokenizer",
+	url: `${PARAGRAPH_REPO}/tokenizer.json`,
+	fileName: "paragraph-minilm-l12-tokenizer.json",
+	sizeBytes: 9_081_518,
+	sha256: "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
 };
 
 /** macOS only. Extracted next to the model; whisper.cpp finds it by name. */
@@ -59,7 +81,7 @@ export const SIDECAR_ASSET_NAMES: Record<SidecarVariant, string> = {
  */
 export const SIDECAR_CHECKSUMS_ASSET = "SHA256SUMS";
 /** Approximate size shown in the UI only; the real size comes from the download. */
-export const SIDECAR_APPROX_SIZE_BYTES = 30_000_000;
+export const SIDECAR_APPROX_SIZE_BYTES = 35_000_000;
 
 export function releaseAssetUrl(version: string, assetName: string): string {
 	return `https://github.com/${RELEASE_REPO}/releases/download/v${version}/${assetName}`;

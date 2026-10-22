@@ -19,7 +19,7 @@ Obsidian plugin (TypeScript)
 Rust sidecar (CLI binary)
   Transcriber trait  → WhisperCpp (whisper-rs; GPU backend chosen by cargo feature)
   sentences()        → split at sentence ends, measure the pause after each
-  Paragrapher trait  → PauseGap
+  Paragrapher trait  → ContentGate<SentenceEmbedder> (OnnxEmbedder, ONNX Runtime), or PauseGap
   run<T: Transcriber, P: Paragrapher>(…) → JSON lines on stdout
 ```
 
@@ -36,6 +36,7 @@ plugin/                    Obsidian plugin (TS, esbuild, based on the official s
 sidecar/                   Cargo workspace
   crates/transcribe-core/  traits, domain types, sentences(), PauseGap, protocol types, run()
   crates/engine-whispercpp/ WhisperCpp: impl Transcriber (whisper-rs)
+  crates/embed-onnx/       OnnxEmbedder: impl SentenceEmbedder (ONNX Runtime, statically linked)
   crates/transcribe-cli/   the sidecar binary
 .github/workflows/         CI and release builds
 docs/
@@ -85,6 +86,8 @@ pub struct PauseGap { pub min_gap: Duration }
 
 `PauseGap` rules: join sentences within a paragraph with a single space, drop empty sentences, never produce an empty paragraph or one containing a line break. Default `min_gap` is 1.8 s (a plugin setting).
 
+`ContentGate` rules (the default when the paragraph model is installed): each sentence boundary gets a topic-drift score, one minus the cosine similarity between the mean embedding of the two sentences before it and the two after it. Drift and pause are ranked within the transcript so both adapt to the speaker. Strong drift (top 15% and at least 0.75) breaks whatever the pause; weak drift (bottom 40% or under 0.5) never breaks, however long the pause, so a pause to think or to land a point stays inside the paragraph; borderline drift breaks only when the pause is also in the speaker's top 30% and at least 0.5 s. Paragraphs have at least two sentences. The embedding model is paraphrase-multilingual-MiniLM-L12-v2 (int8 ONNX, about 50 languages, mean pooling), chosen over SaT/wtpsplit (400 MB+) and the English-only all-MiniLM-L6-v2 after comparing them on test recordings.
+
 ### whisper.cpp engine (`engine-whispercpp`)
 
 - `WhisperCpp::new(model_path, config)` loads the model once; `impl Transcriber`.
@@ -105,6 +108,7 @@ transcribe-cli probe
 
 transcribe-cli transcribe --model <path> [--vad-model <path>] [--language <code>]
                           [--prompt <text>] [--pause-gap-ms <n>]
+                          [--paragraph-model <path> --paragraph-tokenizer <path>]
   stdin:  raw little-endian f32 PCM, 16 kHz mono, until EOF
   stdout: one JSON object per line
     {"type":"progress","stage":"loading"}
@@ -114,7 +118,7 @@ transcribe-cli transcribe --model <path> [--vad-model <path>] [--language <code>
   exit: 0 on result, 1 on error (an error line is written first when possible)
 ```
 
-The Core ML encoder is found by whisper.cpp next to the model, so it needs no flag. Diagnostics go to stderr only. Cancellation is the plugin killing the process.
+The Core ML encoder is found by whisper.cpp next to the model, so it needs no flag. With the paragraph model, paragraphs break by content (`ContentGate`) and `--pause-gap-ms` only applies if the model fails to load or run, which is reported on stderr but never fails the transcription. Diagnostics go to stderr only. Cancellation is the plugin killing the process.
 
 ### Plugin
 
@@ -127,7 +131,7 @@ The Core ML encoder is found by whisper.cpp next to the model, so it needs no fl
 - **Settings:** language (auto by default), initial prompt, pause gap (seconds), Linux backend (auto / cuda / vulkan / cpu), sidecar path override (for development), and model status with a download button.
 - **Asset manager:**
   - Data directory outside the vault so 3 GB models don't sync: `~/Library/Application Support/<plugin-id>/` on macOS, `$XDG_DATA_HOME/<plugin-id>/` (default `~/.local/share`) on Linux.
-  - Downloads, with progress and SHA-256 verification: the large-v3 ggml model and the Silero VAD model from Hugging Face; on macOS also the Core ML encoder (zip, extracted); the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
+  - Downloads, with progress and SHA-256 verification: the large-v3 ggml model, the Silero VAD model and the paragraph model (int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2, with its tokenizer.json) from Hugging Face; on macOS also the Core ML encoder (zip, extracted); the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
   - Linux backend "auto": `nvidia-smi` present → cuda, otherwise vulkan.
   - Downloads happen only after the user clicks download in settings or confirms a prompt on first use. The plugin README discloses them (required by Obsidian's community plugin rules).
 - **Plugin id:** Obsidian disallows "obsidian" in plugin ids. Working name: **Local Whisper Transcribe** (`local-whisper-transcribe`).

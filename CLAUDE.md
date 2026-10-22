@@ -14,7 +14,7 @@ lspci | grep -iE 'vga|3d'      # a virtual adapter only (e.g. "Device 1234:1111"
 When running in a VM or without a GPU, do not run:
 
 - GPU builds or tests (`--features metal`, `coreml`, `cuda`, `vulkan`).
-- Tests that load a real Whisper model, including the slow/ignored integration tests (`cargo test -- --ignored`).
+- Tests that load a real Whisper or paragraph model, including the slow/ignored integration tests (`cargo test -- --ignored`).
 
 Report them as skipped in your summary; the user runs them on real hardware before a release. Unit tests and CPU builds without real models (fakes, fixtures) still run as normal.
 

@@ -62,7 +62,7 @@ jobs:
 
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake clang
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
 
       - name: Install CUDA toolkit 12.4
         if: matrix.asset == 'transcribe-cli-linux-x64-cuda'

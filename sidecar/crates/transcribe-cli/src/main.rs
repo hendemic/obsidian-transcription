@@ -9,12 +9,18 @@ mod pcm;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use embed_onnx::OnnxEmbedder;
 use engine_whispercpp::{LevelFilter, VadConfig, WhisperCpp, WhisperCppConfig};
 use transcribe_core::protocol::{error_message, write_line, Message, ProbeResponse};
-use transcribe_core::{run, Options, PauseGap, Pcm16kMono, Progress, Transcriber, Transcript};
+use transcribe_core::{
+    run, ContentGate, Options, Paragrapher, PauseGap, Pcm16kMono, Progress, Sentence, Transcriber,
+    Transcript,
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -49,9 +55,18 @@ struct TranscribeArgs {
     /// Initial prompt: names and terms to bias the decoder toward.
     #[arg(long, allow_hyphen_values = true)]
     prompt: Option<String>,
-    /// Minimum pause, in milliseconds, that starts a new paragraph.
+    /// Minimum pause, in milliseconds, that starts a new paragraph when
+    /// paragraphing by pauses only.
     #[arg(long, default_value_t = 1800)]
     pause_gap_ms: u64,
+    /// Path to the ONNX sentence-embedding model used to break paragraphs
+    /// where the topic shifts. Without it (or if it fails to load),
+    /// paragraphs break on pauses only.
+    #[arg(long, requires = "paragraph_tokenizer")]
+    paragraph_model: Option<PathBuf>,
+    /// Path to the paragraph model's tokenizer.json.
+    #[arg(long, requires = "paragraph_model")]
+    paragraph_tokenizer: Option<PathBuf>,
 }
 
 fn main() -> ExitCode {
@@ -140,7 +155,11 @@ fn transcribe(args: TranscribeArgs) -> ExitCode {
             n_threads: None,
         },
     };
-    let paragrapher = PauseGap::new(Duration::from_millis(args.pause_gap_ms));
+    let pause_gap = PauseGap::new(Duration::from_millis(args.pause_gap_ms));
+    let paragrapher = Paragraphs::load_in_background(
+        args.paragraph_model.zip(args.paragraph_tokenizer),
+        pause_gap,
+    );
     let opts = Options {
         language: args.language,
         initial_prompt: args.prompt,
@@ -154,6 +173,61 @@ fn transcribe(args: TranscribeArgs) -> ExitCode {
             eprintln!("error: {}", error_message(&e));
             let _ = io::stderr().flush();
             ExitCode::FAILURE
+        }
+    }
+}
+
+type EmbedderLoad = thread::JoinHandle<Result<OnnxEmbedder, embed_onnx::Error>>;
+
+/// Breaks paragraphs by content when the paragraph model loads, by pauses
+/// otherwise. A model that fails to load is reported on stderr but does not
+/// fail the transcription.
+///
+/// The model loads on a background thread while Whisper runs, so it neither
+/// delays the first progress line nor adds to the total time.
+struct Paragraphs {
+    pause_gap: PauseGap,
+    model: Mutex<Option<EmbedderLoad>>,
+}
+
+impl Paragraphs {
+    fn load_in_background(paths: Option<(PathBuf, PathBuf)>, pause_gap: PauseGap) -> Self {
+        let load = paths
+            .map(|(model, tokenizer)| thread::spawn(move || OnnxEmbedder::new(model, tokenizer)));
+        Self {
+            pause_gap,
+            model: Mutex::new(load),
+        }
+    }
+
+    fn embedder(&self) -> Option<OnnxEmbedder> {
+        let load = self
+            .model
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()?;
+        match load.join() {
+            Ok(Ok(embedder)) => Some(embedder),
+            Ok(Err(e)) => {
+                eprintln!(
+                    "warning: {}; breaking paragraphs on pauses only",
+                    error_message(&e)
+                );
+                None
+            }
+            Err(_) => {
+                eprintln!("warning: loading the paragraph model panicked; breaking paragraphs on pauses only");
+                None
+            }
+        }
+    }
+}
+
+impl Paragrapher for Paragraphs {
+    fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String> {
+        match self.embedder() {
+            Some(embedder) => ContentGate::new(embedder, self.pause_gap).paragraphs(sentences),
+            None => self.pause_gap.paragraphs(sentences),
         }
     }
 }
@@ -244,6 +318,49 @@ mod tests {
         assert_eq!(args.language, None);
         assert_eq!(args.prompt, None);
         assert_eq!(args.pause_gap_ms, 1800);
+        assert_eq!(args.paragraph_model, None);
+        assert_eq!(args.paragraph_tokenizer, None);
+    }
+
+    #[test]
+    fn paragraph_model_and_tokenizer_go_together() {
+        let base = ["transcribe-cli", "transcribe", "--model", "m.bin"];
+        let with = |extra: &[&str]| Cli::try_parse_from(base.iter().chain(extra));
+        assert!(with(&["--paragraph-model", "p.onnx"]).is_err());
+        assert!(with(&["--paragraph-tokenizer", "t.json"]).is_err());
+        let cli = with(&[
+            "--paragraph-model",
+            "p.onnx",
+            "--paragraph-tokenizer",
+            "t.json",
+        ])
+        .unwrap();
+        let Command::Transcribe(args) = cli.command else {
+            panic!("expected transcribe");
+        };
+        assert_eq!(args.paragraph_model, Some(PathBuf::from("p.onnx")));
+        assert_eq!(args.paragraph_tokenizer, Some(PathBuf::from("t.json")));
+    }
+
+    #[test]
+    fn missing_or_absent_paragraph_model_falls_back_to_pauses() {
+        let sentences = [
+            Sentence {
+                text: "One.".into(),
+                pause_after: Duration::from_secs(5),
+            },
+            Sentence {
+                text: "Two.".into(),
+                pause_after: Duration::ZERO,
+            },
+        ];
+        let missing = Paragraphs::load_in_background(
+            Some(("/nonexistent/p.onnx".into(), "/nonexistent/t.json".into())),
+            PauseGap::default(),
+        );
+        assert_eq!(missing.paragraphs(&sentences), vec!["One.", "Two."]);
+        let absent = Paragraphs::load_in_background(None, PauseGap::default());
+        assert_eq!(absent.paragraphs(&sentences), vec!["One.", "Two."]);
     }
 
     #[test]

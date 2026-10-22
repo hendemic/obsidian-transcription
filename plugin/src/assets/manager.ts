@@ -33,6 +33,8 @@ export interface ResolvedPaths {
 	sidecar: string;
 	model: string;
 	vad: string;
+	paragraphModel: string;
+	paragraphTokenizer: string;
 }
 
 export class AssetManager {
@@ -106,9 +108,13 @@ export class AssetManager {
 		const settings = this.getSettings();
 		const model = findAsset(plan, "model")?.dest;
 		const vad = findAsset(plan, "vad")?.dest;
+		const paragraphModel = findAsset(plan, "paragraph-model")?.dest;
+		const paragraphTokenizer = findAsset(plan, "paragraph-tokenizer")?.dest;
 		const sidecar = settings.sidecarPath !== "" ? settings.sidecarPath : findAsset(plan, "sidecar")?.dest;
-		if (!model || !vad || !sidecar) throw new Error("Asset plan is incomplete");
-		return { sidecar, model, vad };
+		if (!model || !vad || !paragraphModel || !paragraphTokenizer || !sidecar) {
+			throw new Error("Asset plan is incomplete");
+		}
+		return { sidecar, model, vad, paragraphModel, paragraphTokenizer };
 	}
 
 	cancelDownload(): void {

@@ -2,6 +2,8 @@
 import {
 	COREML_ENCODER,
 	MODEL,
+	PARAGRAPH_MODEL,
+	PARAGRAPH_TOKENIZER,
 	SIDECAR_APPROX_SIZE_BYTES,
 	SIDECAR_ASSET_NAMES,
 	type AssetId,
@@ -110,6 +112,22 @@ export function buildAssetPlan(input: PlanInput): AssetSpec[] {
 			dest: `${models}/${VAD_MODEL.fileName}`,
 			sizeBytes: VAD_MODEL.sizeBytes,
 			sha256: VAD_MODEL.sha256,
+		},
+		{
+			id: "paragraph-model",
+			label: PARAGRAPH_MODEL.label,
+			url: PARAGRAPH_MODEL.url,
+			dest: `${models}/${PARAGRAPH_MODEL.fileName}`,
+			sizeBytes: PARAGRAPH_MODEL.sizeBytes,
+			sha256: PARAGRAPH_MODEL.sha256,
+		},
+		{
+			id: "paragraph-tokenizer",
+			label: PARAGRAPH_TOKENIZER.label,
+			url: PARAGRAPH_TOKENIZER.url,
+			dest: `${models}/${PARAGRAPH_TOKENIZER.fileName}`,
+			sizeBytes: PARAGRAPH_TOKENIZER.sizeBytes,
+			sha256: PARAGRAPH_TOKENIZER.sha256,
 		},
 	];
 	if (input.platform === "darwin") {

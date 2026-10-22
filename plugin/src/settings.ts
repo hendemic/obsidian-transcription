@@ -43,7 +43,7 @@ export class LocalWhisperSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Pause gap (seconds)")
-			.setDesc("Start a new paragraph when the silence after a sentence is at least this long (0.1 to 60).")
+			.setDesc("Only used without the paragraph model: start a new paragraph when the silence after a sentence is at least this long (0.1 to 60).")
 			.addText((t) =>
 				t.setValue(String(settings.pauseGapSeconds)).onChange(async (v) => {
 					const n = Number(v);
