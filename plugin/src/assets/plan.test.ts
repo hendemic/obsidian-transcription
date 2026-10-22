@@ -129,8 +129,13 @@ describe("sidecarVariant", () => {
 		expect(sidecarVariant("linux", "x64", "vulkan")).toBe("linux-x64-vulkan");
 	});
 
-	it("has no CPU build", () => {
-		expect(sidecarVariant("linux", "x64", "cpu")).toBeNull();
+	it("maps Linux x64 cpu to the CPU build", () => {
+		expect(sidecarVariant("linux", "x64", "cpu")).toBe("linux-x64-cpu");
+	});
+
+	it("has no CPU build for Intel Macs or Linux arm64", () => {
+		expect(sidecarVariant("darwin", "x64", "cpu")).toBeNull();
+		expect(sidecarVariant("linux", "arm64", "cpu")).toBeNull();
 	});
 
 	it("has no build for Linux arm64 or Windows", () => {
@@ -217,8 +222,25 @@ describe("buildAssetPlan", () => {
 		expect(() => buildAssetPlan({ ...linux, backend: "cpu", sidecarOverridden: true })).not.toThrow();
 	});
 
-	it("refuses the CPU backend without an override, pointing to the sidecar path setting", () => {
-		expect(() => buildAssetPlan({ ...linux, backend: "cpu" })).toThrow(/sidecar path/i);
+	it("plans the downloadable CPU sidecar for the cpu backend on Linux x64", () => {
+		const s = findAsset(buildAssetPlan({ ...linux, backend: "cpu", pluginVersion: "0.3.0" }), "sidecar");
+		expect(s?.releaseAssetName).toBe("transcribe-cli-linux-x64-cpu");
+		expect(s?.releaseAssetName).toBe(SIDECAR_ASSET_NAMES["linux-x64-cpu"]);
+		expect(s?.url).toMatch(/\/releases\/download\/v0\.3\.0\/transcribe-cli-linux-x64-cpu$/);
+		expect(s?.executable).toBe(true);
+		expect(s?.sha256).toBeNull();
+		expect(s?.dest).toBe("/d/bin/0.3.0/transcribe-cli-linux-x64-cpu");
+	});
+
+	it("gives each Linux backend a different sidecar destination", () => {
+		const dests = (["cuda", "vulkan", "cpu"] as const).map(
+			(backend) => findAsset(buildAssetPlan({ ...linux, backend }), "sidecar")?.dest,
+		);
+		expect(new Set(dests).size).toBe(3);
+	});
+
+	it("refuses an unsupported arch with the cpu backend too", () => {
+		expect(() => buildAssetPlan({ ...linux, arch: "arm64", backend: "cpu" })).toThrow(/linux\/arm64/);
 	});
 
 	it("refuses an unsupported platform/arch without an override", () => {
@@ -273,7 +295,7 @@ describe("missingAssets", () => {
 	it("treats the Core ML encoder as missing when only its zip exists", () => {
 		const coreml = findAsset(macPlan, "coreml");
 		const present = new Set(macPlan.filter((a) => a.id !== "coreml").map((a) => a.dest));
-		present.add(coreml?.archivePath);
+		if (coreml?.archivePath) present.add(coreml.archivePath);
 		expect(missingAssets(macPlan, (p) => present.has(p)).map((a) => a.id)).toEqual(["coreml"]);
 	});
 

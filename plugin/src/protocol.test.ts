@@ -298,10 +298,10 @@ describe("buildTranscribeArgs", () => {
 			expect(buildTranscribeArgs({ modelPath: "m", prompt: "a\nb" }).slice(-1)).toEqual(["a\nb"]);
 		});
 
-		// RISK (depends on the sidecar's clap config, which is not written yet): clap rejects an option value
-		// that starts with "-" unless `allow_hyphen_values` is set, so `--prompt "-Anke"` or a prompt like
-		// "--help" would make the sidecar fail or print help. Passing `--prompt=<text>` (or `--` handling)
-		// would be robust. This test asserts the robust form.
+		// BUG (cross-component): transcribe-cli declares `--prompt` with plain `#[arg(long)]` (no
+		// `allow_hyphen_values`), so clap rejects a value starting with "-": a prompt like "-ish words" or
+		// "--help" makes every transcription fail with a usage error. Passing `--prompt=<text>` fixes it on the
+		// plugin side (or allow hyphen values on the sidecar side). This test asserts the robust form.
 		it.fails("passes a prompt that starts with a hyphen in a form an option parser cannot misread", () => {
 			const args = buildTranscribeArgs({ modelPath: "m", prompt: "--help" });
 			const i = args.indexOf("--prompt");

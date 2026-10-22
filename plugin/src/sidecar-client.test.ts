@@ -86,7 +86,7 @@ function setup(over: Partial<RunSidecarOptions> = {}): {
 	return { child, spawn, progress, promise };
 }
 
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 
 async function rejection(p: Promise<unknown>): Promise<Error> {
 	try {
@@ -326,7 +326,7 @@ describe("runSidecar", () => {
 				args: [],
 				pcm: new Float32Array(),
 				spawn: () => {
-					// eslint-disable-next-line @typescript-eslint/only-throw-error
+					// eslint-disable-next-line @typescript-eslint/only-throw-error -- spawn may throw a non-Error; that path is under test
 					throw "weird";
 				},
 			});
