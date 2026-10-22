@@ -43,7 +43,7 @@ export function resolveLinuxBackend(setting: LinuxBackend, hasNvidiaSmi: boolean
 
 /**
  * Release variant for this machine, or null when there is no published build
- * (unsupported platform/arch, or the CPU backend, which is not released).
+ * (unsupported platform/arch).
  */
 export function sidecarVariant(
 	platform: Platform,
@@ -52,7 +52,7 @@ export function sidecarVariant(
 ): SidecarVariant | null {
 	if (platform === "darwin") return arch === "arm64" ? "macos-arm64" : null;
 	if (platform === "linux" && arch === "x64") {
-		return backend === "cuda" ? "linux-x64-cuda" : backend === "vulkan" ? "linux-x64-vulkan" : null;
+		return backend === "cuda" ? "linux-x64-cuda" : backend === "vulkan" ? "linux-x64-vulkan" : "linux-x64-cpu";
 	}
 	return null;
 }
@@ -117,11 +117,7 @@ export function buildAssetPlan(input: PlanInput): AssetSpec[] {
 	if (!input.sidecarOverridden) {
 		const variant = sidecarVariant(input.platform, input.arch, input.backend);
 		if (!variant) {
-			throw new Error(
-				input.backend === "cpu"
-					? "There is no downloadable CPU build. Set a sidecar path in the plugin settings."
-					: `No transcription engine build is available for ${input.platform}/${input.arch}.`,
-			);
+			throw new Error(`No transcription engine build is available for ${input.platform}/${input.arch}.`);
 		}
 		const name = SIDECAR_ASSET_NAMES[variant];
 		plan.push({

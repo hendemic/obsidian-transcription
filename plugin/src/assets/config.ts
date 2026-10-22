@@ -43,12 +43,13 @@ export const COREML_ENCODER: FileAssetConfig & { extractedDirName: string } = {
 	sha256: "47837be7594a29429ec08620043390c4d6d467f8bd362df09e9390ace76a55a4",
 };
 
-export type SidecarVariant = "macos-arm64" | "linux-x64-cuda" | "linux-x64-vulkan";
+export type SidecarVariant = "macos-arm64" | "linux-x64-cuda" | "linux-x64-vulkan" | "linux-x64-cpu";
 
 export const SIDECAR_ASSET_NAMES: Record<SidecarVariant, string> = {
 	"macos-arm64": "transcribe-cli-macos-arm64",
 	"linux-x64-cuda": "transcribe-cli-linux-x64-cuda",
 	"linux-x64-vulkan": "transcribe-cli-linux-x64-vulkan",
+	"linux-x64-cpu": "transcribe-cli-linux-x64-cpu",
 };
 
 /**
