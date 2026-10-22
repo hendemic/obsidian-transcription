@@ -30,4 +30,9 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		rules: {
+			'obsidianmd/ui/sentence-case': ['warn', { acronyms: ['CUDA', 'CPU', 'GPU', 'VAD', 'SHA', 'URL', 'PCM'], brands: ['NVIDIA', 'Vulkan'] }],
+		},
+	},
 );

@@ -64,11 +64,15 @@ export class AssetManager {
 			}
 			let ldconfig: string | null = null;
 			if (hasSmi) {
-				try {
-					const { stdout } = await execFileAsync("ldconfig", ["-p"], { timeout: 10_000 });
-					ldconfig = String(stdout);
-				} catch {
-					ldconfig = null; // ldconfig unavailable: fall back to Vulkan
+				// GUI-launched apps often lack /sbin on PATH, where Debian/Ubuntu keep ldconfig.
+				for (const bin of ["ldconfig", "/sbin/ldconfig", "/usr/sbin/ldconfig"]) {
+					try {
+						const { stdout } = await execFileAsync(bin, ["-p"], { timeout: 10_000 });
+						ldconfig = String(stdout);
+						break;
+					} catch {
+						// try the next location; if none works, fall back to Vulkan
+					}
 				}
 			}
 			this.cudaUsable = isCudaUsable(hasSmi, ldconfig);
