@@ -170,4 +170,270 @@ mod tests {
         }
         assert!(matches!(read_pcm_f32le(Failing), Err(PcmError::Io(_))));
     }
+
+    // --- Adversarial cases added by the test pass. -------------------------
+    //
+    // Expected sample values are given as hand-written IEEE 754 byte patterns
+    // where endianness matters, not produced by `to_le_bytes`.
+
+    fn chunked(data: Vec<u8>, sizes: Vec<usize>) -> Chunked {
+        Chunked {
+            data,
+            pos: 0,
+            sizes,
+            call: 0,
+        }
+    }
+
+    fn bits(samples: &[f32]) -> Vec<u32> {
+        samples.iter().map(|s| s.to_bits()).collect()
+    }
+
+    #[test]
+    fn known_little_endian_byte_patterns() {
+        let data = [
+            0x00, 0x00, 0x80, 0x3F, // 1.0
+            0x00, 0x00, 0x80, 0xBF, // -1.0
+            0x00, 0x00, 0x00, 0x3F, // 0.5
+            0x00, 0x00, 0x00, 0x00, // 0.0
+            0x00, 0x00, 0x00, 0x80, // -0.0
+            0x01, 0x00, 0x80, 0x3F, // 1.0 + 1 ulp
+            0xDB, 0x0F, 0x49, 0x40, // pi
+        ];
+        let pcm = read_pcm_f32le(&data[..]).unwrap();
+        assert_eq!(
+            bits(&pcm.0),
+            vec![
+                0x3F80_0000,
+                0xBF80_0000,
+                0x3F00_0000,
+                0x0000_0000,
+                0x8000_0000,
+                0x3F80_0001,
+                0x4049_0FDB
+            ]
+        );
+    }
+
+    #[test]
+    fn big_endian_interpretation_is_not_used() {
+        // 0x3F800000 in big-endian order would be 1.0; read as little-endian
+        // these bytes are a tiny denormal-ish value, not 1.0.
+        let pcm = read_pcm_f32le(&[0x3F, 0x80, 0x00, 0x00][..]).unwrap();
+        assert_eq!(pcm.0[0].to_bits(), 0x0000_803F);
+        assert_ne!(pcm.0[0], 1.0);
+    }
+
+    #[test]
+    fn subnormals_negative_zero_and_extremes_are_kept_bit_exact() {
+        let input = [
+            f32::from_bits(1), // smallest subnormal
+            -0.0,
+            f32::MAX,
+            f32::MIN,
+            f32::MIN_POSITIVE,
+            -f32::EPSILON,
+        ];
+        let pcm = read_pcm_f32le(&bytes(&input)[..]).unwrap();
+        assert_eq!(bits(&pcm.0), bits(&input));
+    }
+
+    #[test]
+    fn samples_outside_unit_range_are_accepted() {
+        // Nominal range is [-1, 1] but clipping is not the reader's job.
+        let pcm = read_pcm_f32le(&bytes(&[2.5, -3.0, 1000.0])[..]).unwrap();
+        assert_eq!(pcm.0, [2.5, -3.0, 1000.0]);
+    }
+
+    #[test]
+    fn odd_byte_counts_are_errors_with_total() {
+        for len in [1usize, 2, 3, 5, 6, 7, 9, 4097] {
+            let err = read_pcm_f32le(&vec![0u8; len][..]).unwrap_err();
+            match err {
+                PcmError::TrailingBytes { total_bytes } => {
+                    assert_eq!(total_bytes, len as u64, "len {len}")
+                }
+                other => panic!("len {len}: expected TrailingBytes, got {other}"),
+            }
+        }
+    }
+
+    #[test]
+    fn odd_byte_counts_are_errors_when_split_across_reads() {
+        for len in [1usize, 2, 3, 5, 13, 401] {
+            for sizes in [vec![1], vec![2], vec![3], vec![1, 2, 3]] {
+                let err = read_pcm_f32le(chunked(vec![0u8; len], sizes.clone())).unwrap_err();
+                assert!(
+                    matches!(err, PcmError::TrailingBytes { total_bytes } if total_bytes == len as u64),
+                    "len {len} sizes {sizes:?}: {err}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn multiple_of_four_bytes_split_into_odd_reads_is_fine() {
+        let input = [1.0f32, -1.0, 0.5];
+        for sizes in [
+            vec![1],
+            vec![2],
+            vec![3],
+            vec![3, 1, 2],
+            vec![2, 3, 1],
+            vec![5],
+        ] {
+            let pcm = read_pcm_f32le(chunked(bytes(&input), sizes.clone())).unwrap();
+            assert_eq!(pcm.0, input, "sizes {sizes:?}");
+        }
+    }
+
+    #[test]
+    fn trailing_bytes_error_message_names_the_count() {
+        let err = read_pcm_f32le(&[0u8; 5][..]).unwrap_err();
+        assert!(err.to_string().contains('5'), "{err}");
+    }
+
+    #[test]
+    fn every_kind_of_non_finite_sample_is_rejected() {
+        let nans = [
+            f32::NAN,
+            -f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::from_bits(0x7F80_0001), // signalling NaN
+            f32::from_bits(0xFFFF_FFFF), // NaN, all bits set
+            f32::from_bits(0x7FC0_1234), // quiet NaN with payload
+        ];
+        for bad in nans {
+            let err = read_pcm_f32le(&bytes(&[0.0, 0.5, bad, 0.25])[..]).unwrap_err();
+            assert!(
+                matches!(err, PcmError::NonFinite { index: 2 }),
+                "{:#010x}: {err}",
+                bad.to_bits()
+            );
+        }
+    }
+
+    #[test]
+    fn first_non_finite_index_is_reported() {
+        let err = read_pcm_f32le(&bytes(&[f32::INFINITY, 0.0, f32::NAN])[..]).unwrap_err();
+        assert!(matches!(err, PcmError::NonFinite { index: 0 }), "{err}");
+        let mut input = vec![0.0f32; 100_000];
+        input[99_999] = f32::NEG_INFINITY;
+        let err = read_pcm_f32le(&bytes(&input)[..]).unwrap_err();
+        assert!(
+            matches!(err, PcmError::NonFinite { index: 99_999 }),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn non_finite_sample_split_across_reads_is_rejected() {
+        let err = read_pcm_f32le(chunked(bytes(&[0.0, f32::NAN]), vec![3])).unwrap_err();
+        assert!(matches!(err, PcmError::NonFinite { index: 1 }), "{err}");
+    }
+
+    #[test]
+    fn single_byte_reads_over_many_samples() {
+        let input: Vec<f32> = (0..10_000).map(|i| (i as f32 * 0.37).sin()).collect();
+        let pcm = read_pcm_f32le(chunked(bytes(&input), vec![1])).unwrap();
+        assert_eq!(bits(&pcm.0), bits(&input));
+    }
+
+    #[test]
+    fn reads_of_one_to_three_bytes_in_every_rotation() {
+        let input: Vec<f32> = (0..257).map(|i| i as f32 - 128.0).collect();
+        for sizes in [
+            vec![1, 2, 3],
+            vec![2, 3, 1],
+            vec![3, 1, 2],
+            vec![3, 3, 3, 1],
+            vec![2, 2, 1],
+        ] {
+            let pcm = read_pcm_f32le(chunked(bytes(&input), sizes.clone())).unwrap();
+            assert_eq!(pcm.0, input, "sizes {sizes:?}");
+        }
+    }
+
+    #[test]
+    fn exactly_one_chunk_and_chunk_boundaries() {
+        for samples in [CHUNK / 4 - 1, CHUNK / 4, CHUNK / 4 + 1, CHUNK / 2] {
+            let input: Vec<f32> = (0..samples).map(|i| i as f32).collect();
+            assert_eq!(
+                read_pcm_f32le(&bytes(&input)[..]).unwrap().0.len(),
+                samples,
+                "samples {samples}"
+            );
+        }
+    }
+
+    #[test]
+    fn large_input_in_unaligned_reads() {
+        // ~1 minute of audio, delivered in prime-sized (unaligned) reads.
+        let n = 60 * 16_000;
+        let input: Vec<f32> = (0..n)
+            .map(|i| ((i % 2000) as f32 - 1000.0) / 1000.0)
+            .collect();
+        let pcm = read_pcm_f32le(chunked(bytes(&input), vec![4093, 7, 65_537])).unwrap();
+        assert_eq!(pcm.0.len(), n);
+        assert_eq!(bits(&pcm.0), bits(&input));
+    }
+
+    #[test]
+    fn io_error_after_partial_data_is_reported() {
+        struct FailMidway(usize);
+        impl Read for FailMidway {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                if self.0 == 0 {
+                    return Err(io::Error::other("pipe closed"));
+                }
+                let n = self.0.min(buf.len()).min(6);
+                buf[..n].fill(0);
+                self.0 -= n;
+                Ok(n)
+            }
+        }
+        assert!(matches!(
+            read_pcm_f32le(FailMidway(10)),
+            Err(PcmError::Io(_))
+        ));
+    }
+
+    #[test]
+    fn repeated_interrupts_mid_sample_are_retried() {
+        /// Returns 1 byte, then Interrupted, alternating.
+        struct Flaky {
+            data: Vec<u8>,
+            pos: usize,
+            interrupt: bool,
+        }
+        impl Read for Flaky {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                self.interrupt = !self.interrupt;
+                if self.interrupt {
+                    return Err(io::ErrorKind::Interrupted.into());
+                }
+                if self.pos == self.data.len() || buf.is_empty() {
+                    return Ok(0);
+                }
+                buf[0] = self.data[self.pos];
+                self.pos += 1;
+                Ok(1)
+            }
+        }
+        let input = [0.125f32, -0.75];
+        let pcm = read_pcm_f32le(Flaky {
+            data: bytes(&input),
+            pos: 0,
+            interrupt: false,
+        })
+        .unwrap();
+        assert_eq!(pcm.0, input);
+    }
+
+    #[test]
+    fn duration_matches_sample_count() {
+        let pcm = read_pcm_f32le(&vec![0u8; 16_000 * 4 * 3][..]).unwrap();
+        assert_eq!(pcm.duration(), std::time::Duration::from_secs(3));
+    }
 }
