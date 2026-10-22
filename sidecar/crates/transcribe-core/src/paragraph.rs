@@ -1,23 +1,22 @@
-//! Grouping transcribed segments into paragraphs.
+//! Grouping sentences into paragraphs.
 
 use std::time::Duration;
 
-use crate::Segment;
+use crate::sentence::clean_text;
+use crate::Sentence;
 
-/// Turns segments into paragraphs of plain text.
+/// Turns sentences into paragraphs of plain text.
 pub trait Paragrapher {
-    fn paragraphs(&self, segments: &[Segment]) -> Vec<String>;
+    /// Groups `sentences`, in order, into paragraphs. Paragraphs are never
+    /// empty and never contain a line break.
+    fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String>;
 }
 
-/// Starts a new paragraph when the silence between two segments is at least `min_gap`.
+/// Starts a new paragraph after a sentence followed by a pause of at least `min_gap`.
 ///
-/// Rules:
-/// - each segment's text is trimmed; segments that are empty after trimming are
-///   dropped, and the gap is measured from the end of the last kept segment;
-/// - segments within a paragraph are joined with a single space;
-/// - an empty paragraph is never produced.
-///
-/// Overlapping segments count as a zero gap.
+/// Sentences within a paragraph are joined with a single space. Sentences
+/// that are empty after trimming are dropped, but a long pause after one
+/// still ends the paragraph before it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PauseGap {
     pub min_gap: Duration,
@@ -38,61 +37,22 @@ impl Default for PauseGap {
     }
 }
 
-/// Zero-width and format characters that `str::trim` keeps but that render as nothing.
-const INVISIBLE: [char; 5] = ['\u{200B}', '\u{200C}', '\u{200D}', '\u{2060}', '\u{FEFF}'];
-
-/// Trims `text`, removes invisible characters from its ends, and collapses
-/// every whitespace run containing a line break to a single space so a
-/// paragraph never contains a blank line. Empty if only invisibles remain.
-fn clean_text(text: &str) -> String {
-    let text = text.trim_matches(|c: char| c.is_whitespace() || INVISIBLE.contains(&c));
-    let mut out = String::with_capacity(text.len());
-    let mut run = String::new();
-    for c in text.chars() {
-        if c.is_whitespace() {
-            run.push(c);
-            continue;
-        }
-        flush_run(&mut out, &mut run);
-        out.push(c);
-    }
-    flush_run(&mut out, &mut run);
-    if out.chars().all(|c| INVISIBLE.contains(&c)) {
-        out.clear();
-    }
-    out
-}
-
-fn flush_run(out: &mut String, run: &mut String) {
-    if run.contains(['\n', '\r']) {
-        out.push(' ');
-    } else {
-        out.push_str(run);
-    }
-    run.clear();
-}
-
 impl Paragrapher for PauseGap {
-    fn paragraphs(&self, segments: &[Segment]) -> Vec<String> {
+    fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String> {
         let mut paragraphs = Vec::new();
         let mut current = String::new();
-        let mut last_end: Option<Duration> = None;
 
-        for segment in segments {
-            let text = clean_text(&segment.text);
-            if text.is_empty() {
-                continue;
-            }
-            if let Some(end) = last_end {
-                if segment.start.saturating_sub(end) >= self.min_gap {
-                    paragraphs.push(std::mem::take(&mut current));
+        for sentence in sentences {
+            let text = clean_text(&sentence.text);
+            if !text.is_empty() {
+                if !current.is_empty() {
+                    current.push(' ');
                 }
+                current.push_str(&text);
             }
-            if !current.is_empty() {
-                current.push(' ');
+            if sentence.pause_after >= self.min_gap && !current.is_empty() {
+                paragraphs.push(std::mem::take(&mut current));
             }
-            current.push_str(&text);
-            last_end = Some(last_end.map_or(segment.end, |end| end.max(segment.end)));
         }
 
         if !current.is_empty() {
@@ -106,12 +66,15 @@ impl Paragrapher for PauseGap {
 mod tests {
     use super::*;
 
-    fn seg(start_ms: u64, end_ms: u64, text: &str) -> Segment {
-        Segment {
-            start: Duration::from_millis(start_ms),
-            end: Duration::from_millis(end_ms),
+    fn s(text: &str, pause_ms: u64) -> Sentence {
+        Sentence {
             text: text.to_string(),
+            pause_after: Duration::from_millis(pause_ms),
         }
+    }
+
+    fn gap(min_gap_ms: u64) -> PauseGap {
+        PauseGap::new(Duration::from_millis(min_gap_ms))
     }
 
     #[test]
@@ -120,320 +83,126 @@ mod tests {
     }
 
     #[test]
-    fn no_segments_gives_no_paragraphs() {
+    fn no_sentences_gives_no_paragraphs() {
         assert!(PauseGap::default().paragraphs(&[]).is_empty());
     }
 
     #[test]
-    fn short_gaps_join_with_single_space() {
-        let segments = [seg(0, 1000, " Hello"), seg(1500, 2000, "world. ")];
+    fn short_pauses_join_with_single_space() {
+        let sentences = [s("Hello.", 500), s("World.", 0)];
         assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["Hello world."]
+            PauseGap::default().paragraphs(&sentences),
+            vec!["Hello. World."]
         );
     }
 
     #[test]
-    fn gap_at_threshold_starts_new_paragraph() {
-        let segments = [seg(0, 1000, "One."), seg(2800, 3000, "Two.")];
+    fn pause_at_threshold_starts_new_paragraph() {
+        let sentences = [s("One.", 1800), s("Two.", 0)];
         assert_eq!(
-            PauseGap::default().paragraphs(&segments),
+            PauseGap::default().paragraphs(&sentences),
             vec!["One.", "Two."]
         );
     }
 
     #[test]
-    fn gap_just_below_threshold_stays_in_paragraph() {
-        let segments = [seg(0, 1000, "One."), seg(2799, 3000, "Two.")];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["One. Two."]);
-    }
-
-    #[test]
-    fn empty_segments_are_dropped_and_gap_measured_from_last_kept() {
-        // The blank segment sits in the middle of the pause; it must neither
-        // split the pause in two nor produce an empty paragraph.
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(1500, 2000, "   "),
-            seg(3000, 3500, "Two."),
-            seg(10_000, 11_000, "\n\t"),
-        ];
-        assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["One.", "Two."]
-        );
-    }
-
-    #[test]
-    fn only_whitespace_segments_give_no_paragraphs() {
-        let segments = [seg(0, 1000, " "), seg(5000, 6000, "")];
-        assert!(PauseGap::default().paragraphs(&segments).is_empty());
-    }
-
-    #[test]
-    fn overlapping_segments_count_as_zero_gap() {
-        let segments = [seg(0, 2000, "A"), seg(1500, 2500, "B")];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["A B"]);
-    }
-
-    // --- Adversarial cases added by the test pass. -------------------------
-    //
-    // Deliberately not covered:
-    // - Zero-width and other non-`White_Space` characters (U+200B, U+FEFF):
-    //   `str::trim` keeps them, so a segment made only of them becomes a
-    //   visually empty paragraph. Whisper does not emit these in practice;
-    //   noted in the test report rather than locked in either way.
-
-    fn gap(min_gap_ms: u64) -> PauseGap {
-        PauseGap::new(Duration::from_millis(min_gap_ms))
-    }
-
-    #[test]
-    fn gap_just_above_threshold_starts_new_paragraph() {
-        let segments = [seg(0, 1000, "One."), seg(2801, 3000, "Two.")];
-        assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["One.", "Two."]
-        );
-    }
-
-    #[test]
-    fn gap_one_nanosecond_below_threshold_stays_in_paragraph() {
-        let segments = [
-            Segment {
-                start: Duration::ZERO,
-                end: Duration::from_secs(1),
+    fn pause_just_below_threshold_stays_in_paragraph() {
+        let sentences = [
+            Sentence {
                 text: "One.".into(),
+                pause_after: Duration::from_millis(1800) - Duration::from_nanos(1),
             },
-            Segment {
-                start: Duration::from_millis(2800) - Duration::from_nanos(1),
-                end: Duration::from_secs(3),
-                text: "Two.".into(),
-            },
+            s("Two.", 0),
         ];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["One. Two."]);
+        assert_eq!(
+            PauseGap::default().paragraphs(&sentences),
+            vec!["One. Two."]
+        );
     }
 
     #[test]
-    fn threshold_follows_configured_min_gap_not_default() {
-        // 500 ms gap: below the 1.8 s default, at a 500 ms threshold.
-        let segments = [seg(0, 1000, "One."), seg(1500, 2000, "Two.")];
-        assert_eq!(gap(500).paragraphs(&segments), vec!["One.", "Two."]);
-        assert_eq!(gap(501).paragraphs(&segments), vec!["One. Two."]);
+    fn threshold_follows_configured_min_gap() {
+        let sentences = [s("One.", 500), s("Two.", 0)];
+        assert_eq!(gap(500).paragraphs(&sentences), vec!["One.", "Two."]);
+        assert_eq!(gap(501).paragraphs(&sentences), vec!["One. Two."]);
     }
 
     #[test]
-    fn zero_min_gap_puts_every_kept_segment_in_its_own_paragraph() {
-        // Any gap, including zero (touching segments), is "at least" zero.
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(1000, 2000, "Two."),
-            seg(2500, 3000, "Three."),
-        ];
-        assert_eq!(gap(0).paragraphs(&segments), vec!["One.", "Two.", "Three."]);
-    }
-
-    #[test]
-    fn zero_min_gap_still_drops_empty_segments() {
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(1000, 1500, " "),
-            seg(1500, 2000, "Two."),
-        ];
-        assert_eq!(gap(0).paragraphs(&segments), vec!["One.", "Two."]);
+    fn zero_min_gap_puts_every_sentence_in_its_own_paragraph() {
+        let sentences = [s("One.", 0), s("Two.", 0), s("Three.", 0)];
+        assert_eq!(
+            gap(0).paragraphs(&sentences),
+            vec!["One.", "Two.", "Three."]
+        );
     }
 
     #[test]
     fn huge_min_gap_gives_one_paragraph() {
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(3_600_000, 3_601_000, "Two."),
-            seg(86_400_000, 86_401_000, "Three."),
-        ];
+        let sentences = [s("One.", 3_600_000), s("Two.", 86_400_000), s("Three.", 0)];
         assert_eq!(
-            PauseGap::new(Duration::MAX).paragraphs(&segments),
+            PauseGap::new(Duration::MAX).paragraphs(&sentences),
             vec!["One. Two. Three."]
         );
     }
 
     #[test]
-    fn huge_timestamps_do_not_overflow() {
-        let segments = [
-            Segment {
-                start: Duration::MAX - Duration::from_secs(10),
-                end: Duration::MAX - Duration::from_secs(9),
-                text: "One.".into(),
-            },
-            Segment {
-                start: Duration::MAX - Duration::from_secs(1),
-                end: Duration::MAX,
-                text: "Two.".into(),
-            },
-        ];
+    fn empty_sentences_are_dropped() {
+        let sentences = [s("One.", 0), s("  ", 0), s("\u{200B}", 0), s("Two.", 0)];
         assert_eq!(
-            PauseGap::default().paragraphs(&segments),
+            PauseGap::default().paragraphs(&sentences),
+            vec!["One. Two."]
+        );
+    }
+
+    #[test]
+    fn long_pause_after_an_empty_sentence_still_breaks() {
+        let sentences = [s("One.", 0), s(" ", 5000), s("Two.", 0)];
+        assert_eq!(
+            PauseGap::default().paragraphs(&sentences),
             vec!["One.", "Two."]
         );
     }
 
     #[test]
-    fn single_segment_gives_single_trimmed_paragraph() {
-        assert_eq!(
-            PauseGap::default().paragraphs(&[seg(0, 1000, "\t Hello there. \r\n")]),
-            vec!["Hello there."]
-        );
+    fn long_pause_before_any_text_does_not_create_an_empty_paragraph() {
+        let sentences = [s(" ", 5000), s("Hello.", 0)];
+        assert_eq!(PauseGap::default().paragraphs(&sentences), vec!["Hello."]);
     }
 
     #[test]
-    fn all_empty_segments_with_long_gaps_give_no_paragraphs() {
-        let segments = [
-            seg(0, 1000, ""),
-            seg(10_000, 11_000, "   "),
-            seg(20_000, 21_000, "\n"),
-            seg(30_000, 31_000, "\u{3000}\u{00A0}"),
+    fn paragraphs_are_trimmed_and_never_contain_a_line_break() {
+        // Sentences built by hand may not be clean; the plugin separates
+        // paragraphs with blank lines, so a line break would split one.
+        let sentences = [
+            s("\n One \n\n two. ", 0),
+            s("\tThree.\r\n", 5000),
+            s(" Four.", 0),
         ];
-        assert!(PauseGap::default().paragraphs(&segments).is_empty());
-    }
-
-    #[test]
-    fn leading_empty_segments_do_not_create_a_paragraph_break() {
-        let segments = [seg(0, 1000, " "), seg(5000, 6000, "Hello")];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["Hello"]);
-    }
-
-    #[test]
-    fn unicode_whitespace_is_trimmed() {
-        // Ideographic space, no-break space, em space, line separator.
-        let segments = [
-            seg(0, 1000, "\u{3000}こんにちは\u{00A0}"),
-            seg(1100, 2000, "\u{2003}مرحبا\u{2028}"),
-        ];
-        assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["こんにちは مرحبا"]
-        );
-    }
-
-    #[test]
-    fn interior_whitespace_is_preserved_and_joins_use_one_space() {
-        let segments = [seg(0, 1000, "  a  b "), seg(1000, 2000, " c\td ")];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["a  b c\td"]);
-    }
-
-    #[test]
-    fn no_paragraph_has_leading_or_trailing_whitespace() {
-        let segments = [
-            seg(0, 1000, "\n One \n"),
-            seg(1200, 2000, "\n"),
-            seg(5000, 6000, " Two\n\n"),
-            seg(6100, 6200, " "),
-        ];
-        for p in PauseGap::default().paragraphs(&segments) {
-            assert!(!p.is_empty());
-            assert_eq!(p, p.trim(), "{p:?}");
-        }
-    }
-
-    #[test]
-    fn invisible_only_segments_are_treated_as_empty() {
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(1000, 1500, "\u{200B}\u{FEFF} \u{2060}\u{200C}\u{200D}"),
-            seg(3000, 3500, "Two."),
-        ];
-        assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["One.", "Two."]
-        );
-    }
-
-    #[test]
-    fn paragraph_never_contains_a_blank_line() {
-        // The plugin inserts paragraphs separated by blank lines (docs/plan.md,
-        // "Insertion"), so a blank line inside one paragraph silently splits it.
-        let segments = [seg(0, 1000, "One.\n\nTwo.")];
-        for p in PauseGap::default().paragraphs(&segments) {
-            assert!(!p.contains("\n\n"), "{p:?}");
-        }
-    }
-
-    #[test]
-    fn empty_segment_with_late_end_does_not_extend_the_gap_origin() {
-        // The blank segment ends at 9 s, but only kept segments count: the gap
-        // from "One." (ends 1 s) to "Two." (starts 2.5 s) is 1.5 s.
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(1000, 9000, "  "),
-            seg(2500, 3000, "Two."),
-        ];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["One. Two."]);
-    }
-
-    #[test]
-    fn empty_segment_inside_a_short_gap_does_not_split() {
-        // Kept-to-kept gap is 1 s; the empty segment must not be used as an origin.
-        let segments = [
-            seg(0, 1000, "One."),
-            seg(1000, 1000, ""),
-            seg(2000, 2500, "Two."),
-        ];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["One. Two."]);
-    }
-
-    #[test]
-    fn gap_is_measured_from_latest_end_of_kept_segments() {
-        // A long segment followed by a short one nested inside it: the gap to
-        // "C" must be measured from A's end (10 s), not B's end (3 s).
-        let segments = [
-            seg(0, 10_000, "A"),
-            seg(2000, 3000, "B"),
-            seg(5000, 6000, "C"),
-        ];
-        assert_eq!(PauseGap::default().paragraphs(&segments), vec!["A B C"]);
-    }
-
-    #[test]
-    fn out_of_order_segment_counts_as_zero_gap() {
-        let segments = [seg(5000, 6000, "Later"), seg(0, 1000, "Earlier")];
-        assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["Later Earlier"]
-        );
-    }
-
-    #[test]
-    fn segment_with_end_before_start_does_not_panic() {
-        let segments = [seg(1000, 0, "Odd"), seg(5000, 6000, "Next")];
-        assert_eq!(
-            PauseGap::default().paragraphs(&segments),
-            vec!["Odd", "Next"]
-        );
+        let paragraphs = PauseGap::default().paragraphs(&sentences);
+        assert_eq!(paragraphs, vec!["One two. Three.", "Four."]);
     }
 
     #[test]
     fn many_paragraphs_keep_order_and_count() {
-        let segments: Vec<Segment> = (0..50)
-            .map(|i| seg(i * 5000, i * 5000 + 1000, &format!("p{i}")))
-            .collect();
-        let paragraphs = PauseGap::default().paragraphs(&segments);
+        let sentences: Vec<Sentence> = (0..50).map(|i| s(&format!("p{i}."), 5000)).collect();
+        let paragraphs = PauseGap::default().paragraphs(&sentences);
         assert_eq!(paragraphs.len(), 50);
         for (i, p) in paragraphs.iter().enumerate() {
-            assert_eq!(p, &format!("p{i}"));
+            assert_eq!(p, &format!("p{i}."));
         }
     }
 
     #[test]
     fn mixed_paragraphs_from_a_realistic_journal() {
-        let segments = [
-            seg(0, 2000, " Today I went for a walk."),
-            seg(2300, 4000, " It was cold."),
-            seg(4000, 4500, " "),
-            seg(7000, 9000, " Later, I called Anna."),
-            seg(9100, 9800, " We talked about the trip."),
-            seg(12_000, 13_000, " Goodnight."),
+        let sentences = [
+            s("Today I went for a walk.", 300),
+            s("It was cold.", 3000),
+            s("Later, I called Anna.", 100),
+            s("We talked about the trip.", 2200),
+            s("Goodnight.", 0),
         ];
         assert_eq!(
-            PauseGap::default().paragraphs(&segments),
+            PauseGap::default().paragraphs(&sentences),
             vec![
                 "Today I went for a walk. It was cold.",
                 "Later, I called Anna. We talked about the trip.",

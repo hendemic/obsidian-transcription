@@ -14,6 +14,12 @@
 //! `whisper_full` would, and maps segment timestamps back to the original
 //! audio. See the `vad` module.
 //!
+//! # Word timing
+//!
+//! Token-level timestamps are enabled and returned as [`Word`]s, and the gaps
+//! between VAD speech spans as [`Silence`]s. Paragraph breaks need both:
+//! segment timestamps abut, so they carry no pause information.
+//!
 //! If VAD is enabled but [`VadConfig::model_path`] is `None`,
 //! [`WhisperCpp::new`] fails with [`Error::VadModelMissing`] rather than
 //! silently transcribing without VAD: output quality would quietly degrade
@@ -23,13 +29,16 @@
 mod error;
 mod logging;
 mod vad;
+mod words;
 
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex};
 use std::thread;
 
-use transcribe_core::{Options, Pcm16kMono, Progress, Segment, Transcriber, SAMPLE_RATE};
+use transcribe_core::{
+    Options, Pcm16kMono, Progress, Segment, Silence, Transcriber, Transcript, Word, SAMPLE_RATE,
+};
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperError,
     WhisperVadContext, WhisperVadContextParams, WhisperVadParams,
@@ -39,7 +48,8 @@ pub use error::Error;
 pub use log::LevelFilter;
 pub use logging::log_to_stderr;
 
-use vad::{splice, SpeechSpan, TimeMap};
+use vad::{silences, splice, SpeechSpan, TimeMap};
+use words::merge_tokens;
 
 /// The compiled-in backend: `"metal+coreml"`, `"cuda"`, `"vulkan"` or `"cpu"`.
 ///
@@ -254,10 +264,11 @@ impl WhisperCpp {
         })
     }
 
-    /// Returns the audio to decode and the map from its timeline to `samples`.
-    fn speech_only(&self, samples: &[f32]) -> Result<(Vec<f32>, TimeMap), Error> {
+    /// Returns the audio to decode, the map from its timeline to `samples`,
+    /// and the silences VAD found in `samples`.
+    fn speech_only(&self, samples: &[f32]) -> Result<(Vec<f32>, TimeMap, Vec<Silence>), Error> {
         let Some(vad) = &self.vad else {
-            return Ok((samples.to_vec(), TimeMap::identity()));
+            return Ok((samples.to_vec(), TimeMap::identity(), Vec::new()));
         };
         let params = WhisperVadParams::default();
         let spans: Vec<SpeechSpan> = {
@@ -270,7 +281,8 @@ impl WhisperCpp {
         log::info!("VAD found {} speech spans", spans.len());
         // whisper.cpp's default `samples_overlap` is 0.1 s.
         let overlap = SAMPLE_RATE as usize / 10;
-        Ok(splice(samples, &spans, overlap))
+        let (audio, time_map) = splice(samples, &spans, overlap);
+        Ok((audio, time_map, silences(&spans)))
     }
 }
 
@@ -325,7 +337,7 @@ impl Transcriber for WhisperCpp {
         pcm: &Pcm16kMono,
         opts: &Options,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<Vec<Segment>, Error> {
+    ) -> Result<Transcript, Error> {
         // Covers state allocation (and, with Core ML, loading the encoder) and the VAD pass.
         progress(Progress::Loading);
 
@@ -333,12 +345,12 @@ impl Transcriber for WhisperCpp {
         let prompt = resolve_prompt(opts.initial_prompt.as_deref())?;
 
         if pcm.0.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Transcript::default());
         }
-        let (audio, time_map) = self.speech_only(&pcm.0)?;
+        let (audio, time_map, silences) = self.speech_only(&pcm.0)?;
         if audio.is_empty() {
             log::info!("no speech detected");
-            return Ok(Vec::new());
+            return Ok(Transcript::default());
         }
 
         let mut state = self.ctx.create_state().map_err(Error::CreateState)?;
@@ -363,6 +375,7 @@ impl Transcriber for WhisperCpp {
         params.set_print_progress(false);
         params.set_print_timestamps(false);
         params.set_print_special(false);
+        params.set_token_timestamps(true);
 
         // whisper-rs requires a 'static progress closure, so progress travels
         // over a channel from a scoped worker thread running inference.
@@ -401,19 +414,39 @@ impl Transcriber for WhisperCpp {
         }
         progress(Progress::Transcribing { percent: 100 });
 
+        // Special tokens (timestamps, end of text, ...) have ids from EOT up.
+        let eot = self.ctx.token_eot();
         let mut segments = Vec::new();
         for segment in state.as_iter() {
             let text = segment
                 .to_str_lossy()
                 .map_err(Error::SegmentText)?
                 .into_owned();
+            let tokens = (0..segment.n_tokens())
+                .filter_map(|i| segment.get_token(i))
+                .filter(|token| token.token_id() < eot)
+                .map(|token| {
+                    let data = token.token_data();
+                    token.to_bytes().map(|bytes| (bytes, data.t0, data.t1))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(Error::SegmentText)?;
+            let words = merge_tokens(tokens)
+                .into_iter()
+                .map(|piece| Word {
+                    start: time_map.to_original(piece.t0),
+                    end: time_map.to_original(piece.t1),
+                    text: piece.text,
+                })
+                .collect();
             segments.push(Segment {
                 start: time_map.to_original(segment.start_timestamp()),
                 end: time_map.to_original(segment.end_timestamp()),
                 text,
+                words,
             });
         }
-        Ok(segments)
+        Ok(Transcript { segments, silences })
     }
 }
 

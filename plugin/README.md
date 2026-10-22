@@ -18,7 +18,7 @@ Supported audio formats are whatever Obsidian's built-in player decodes: m4a, mp
 | --- | --- |
 | Language | `auto` (default) or a code such as `en`. |
 | Initial prompt | Names or terms to bias the transcript toward. |
-| Pause gap (seconds) | A silence at least this long starts a new paragraph. Default 1.8. |
+| Pause gap (seconds) | A silence at least this long after a sentence starts a new paragraph. Pauses in the middle of a sentence never do. Default 1.8. |
 | GPU backend (Linux only) | Auto, CUDA, Vulkan, or CPU. Auto uses CUDA only if `nvidia-smi` is on your PATH and `ldconfig -p` lists both `libcudart.so.12` and `libcublas.so.12`; otherwise (including when `ldconfig` is unavailable) it uses Vulkan. CPU downloads a build without GPU support, which is much slower. |
 | Sidecar path override | Use your own `transcribe-cli` binary instead of the downloaded one (for development). |
 | Models and engine | Shows what is downloaded and lets you download what is missing. |

@@ -14,7 +14,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use engine_whispercpp::{LevelFilter, VadConfig, WhisperCpp, WhisperCppConfig};
 use transcribe_core::protocol::{error_message, write_line, Message, ProbeResponse};
-use transcribe_core::{run, Options, PauseGap, Pcm16kMono, Progress, Segment, Transcriber};
+use transcribe_core::{run, Options, PauseGap, Pcm16kMono, Progress, Transcriber, Transcript};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -189,7 +189,7 @@ impl Transcriber for LoadThenTranscribe {
         pcm: &Pcm16kMono,
         opts: &Options,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<Vec<Segment>, Self::Error> {
+    ) -> Result<Transcript, Self::Error> {
         progress(Progress::Loading);
         let engine = WhisperCpp::new(&self.model, self.config.clone())?;
         engine.transcribe(pcm, opts, progress)
