@@ -18,6 +18,7 @@ Obsidian plugin (TypeScript)
 
 Rust sidecar (CLI binary)
   Transcriber trait  → WhisperCpp (whisper-rs; GPU backend chosen by cargo feature)
+  sentences()        → split at sentence ends, measure the pause after each
   Paragrapher trait  → PauseGap
   run<T: Transcriber, P: Paragrapher>(…) → JSON lines on stdout
 ```
@@ -33,7 +34,7 @@ Why this split:
 ```
 plugin/                    Obsidian plugin (TS, esbuild, based on the official sample plugin)
 sidecar/                   Cargo workspace
-  crates/transcribe-core/  traits, domain types, PauseGap, protocol types, run()
+  crates/transcribe-core/  traits, domain types, sentences(), PauseGap, protocol types, run()
   crates/engine-whispercpp/ WhisperCpp: impl Transcriber (whisper-rs)
   crates/transcribe-cli/   the sidecar binary
 .github/workflows/         CI and release builds
@@ -45,7 +46,10 @@ docs/
 ```rust
 pub struct Pcm16kMono(pub Vec<f32>);
 
-pub struct Segment { pub start: Duration, pub end: Duration, pub text: String }
+pub struct Segment { pub start: Duration, pub end: Duration, pub text: String, pub words: Vec<Word> }
+pub struct Word { pub start: Duration, pub end: Duration, pub text: String } // one decoder token
+pub struct Silence { pub start: Duration, pub end: Duration }                // a gap VAD found
+pub struct Transcript { pub segments: Vec<Segment>, pub silences: Vec<Silence> }
 
 pub struct Options {
     pub language: Option<String>,      // None = auto-detect
@@ -61,20 +65,25 @@ pub trait Transcriber {
         pcm: &Pcm16kMono,
         opts: &Options,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<Vec<Segment>, Self::Error>;
+    ) -> Result<Transcript, Self::Error>;
 }
+
+pub struct Sentence { pub text: String, pub pause_after: Duration }
+pub fn sentences(transcript: &Transcript) -> Vec<Sentence>;
 
 pub trait Paragrapher {
-    fn paragraphs(&self, segments: &[Segment]) -> Vec<String>;
+    fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String>;
 }
 
-/// Starts a new paragraph when the silence between two segments is at least `min_gap`.
+/// Starts a new paragraph after a sentence followed by a pause of at least `min_gap`.
 pub struct PauseGap { pub min_gap: Duration }
 ```
 
 `run<T: Transcriber, P: Paragrapher>(engine, paragrapher, pcm, opts, out: impl Write)` drives a transcription and writes protocol messages. It has no whisper.cpp dependency, so it's tested with a fake `Transcriber`.
 
-`PauseGap` rules: trim each segment's text, join segments within a paragraph with a single space, drop empty segments, never produce an empty paragraph. Default `min_gap` is 1.8 s (a plugin setting).
+`sentences` rules: a sentence ends at sentence-ending punctuation (`.?!…` and CJK, Arabic and Devanagari forms, optionally followed by closing quotes), or before a word that follows a pause of at least 3 s when Whisper left a stretch unpunctuated. Paragraph breaks are only considered at sentence ends, so a pause to think mid-sentence never splits a paragraph. The pause after a sentence is the larger of the gap between its last spoken word and the next sentence's first (word timing) and the VAD silence around that gap. Segment timestamps are not used: whisper.cpp segments abut, with the silence absorbed into one of them, so the gap between segments is almost always zero. Segments are trimmed and joined with a single space.
+
+`PauseGap` rules: join sentences within a paragraph with a single space, drop empty sentences, never produce an empty paragraph or one containing a line break. Default `min_gap` is 1.8 s (a plugin setting).
 
 ### whisper.cpp engine (`engine-whispercpp`)
 
@@ -84,6 +93,7 @@ pub struct PauseGap { pub min_gap: Duration }
 - macOS: Metal plus the Core ML encoder (`ggml-large-v3-encoder.mlmodelc`, next to the model file) so the encoder runs on the Neural Engine.
 - **Silero VAD on by default** (whisper.cpp's built-in VAD with the ggml Silero model). large-v3 hallucinates and repeats during silence, and journal recordings have pauses.
 - Pass `initial_prompt` and `language` through. Map whisper.cpp's progress callback to `Progress::Transcribing`.
+- Token timestamps on: each segment's tokens become `Word`s (special tokens dropped, tokens merged where a character is split across them), and the gaps between VAD speech spans become `Silence`s.
 
 ### Sidecar protocol (`transcribe-cli`)
 

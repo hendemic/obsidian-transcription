@@ -19,8 +19,9 @@
 //! `tests/fixtures/README.md`.
 //!
 //! Deliberately not covered: exact transcript text (tiny.en punctuation and
-//! casing vary between whisper.cpp versions) and paragraph splitting on real
-//! audio (segment timestamps from tiny.en are too coarse to assert on).
+//! casing vary between whisper.cpp versions) and paragraph splitting on
+//! natural speech. Paragraphs are only checked across a long, unambiguous
+//! pause between two copies of the fixture.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -262,4 +263,62 @@ fn transcribes_fixture_with_vad_and_keeps_original_timeline() {
         "VAD should be on: {}",
         run.stderr
     );
+}
+
+/// The fixture twice, separated by `gap_secs` of digital silence.
+fn fixture_twice(gap_secs: usize) -> Vec<f32> {
+    let clip = read_wav_16k_mono(&fixture());
+    let mut samples = clip.clone();
+    samples.extend(std::iter::repeat_n(0.0f32, gap_secs * 16_000));
+    samples.extend(clip);
+    samples
+}
+
+fn assert_two_paragraphs_of_the_clip(paragraphs: &[String]) {
+    assert_eq!(paragraphs.len(), 2, "{paragraphs:?}");
+    for p in paragraphs {
+        assert!(p.to_lowercase().contains("americans"), "{paragraphs:?}");
+    }
+}
+
+#[test]
+#[ignore = "slow: loads a real Whisper model (WHISPER_TEST_MODEL)"]
+fn long_pause_between_sentences_starts_a_paragraph() {
+    // Regression: segment timestamps abut, so pauses must come from word timing.
+    let Some(model) = env_path("WHISPER_TEST_MODEL") else {
+        return;
+    };
+    let run = transcribe(
+        &[
+            "--model".as_ref(),
+            model.as_os_str(),
+            "--language".as_ref(),
+            "en".as_ref(),
+        ],
+        &fixture_twice(3),
+    );
+    assert_two_paragraphs_of_the_clip(&assert_success(&run));
+}
+
+#[test]
+#[ignore = "slow: loads real Whisper and Silero VAD models (WHISPER_TEST_MODEL, WHISPER_TEST_VAD_MODEL)"]
+fn long_pause_removed_by_vad_still_starts_a_paragraph() {
+    let (Some(model), Some(vad)) = (
+        env_path("WHISPER_TEST_MODEL"),
+        env_path("WHISPER_TEST_VAD_MODEL"),
+    ) else {
+        return;
+    };
+    let run = transcribe(
+        &[
+            "--model".as_ref(),
+            model.as_os_str(),
+            "--vad-model".as_ref(),
+            vad.as_os_str(),
+            "--language".as_ref(),
+            "en".as_ref(),
+        ],
+        &fixture_twice(3),
+    );
+    assert_two_paragraphs_of_the_clip(&assert_success(&run));
 }

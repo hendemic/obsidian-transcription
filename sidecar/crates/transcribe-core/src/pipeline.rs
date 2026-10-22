@@ -3,7 +3,7 @@
 use std::io::{self, Write};
 
 use crate::protocol::{error_message, write_line, Message};
-use crate::{Options, Paragrapher, Pcm16kMono, Progress, Transcriber};
+use crate::{sentences, Options, Paragrapher, Pcm16kMono, Progress, Transcriber};
 
 /// Why [`run`] failed. An error line has already been written when possible.
 #[derive(Debug, thiserror::Error)]
@@ -51,11 +51,11 @@ pub fn run<T: Transcriber, P: Paragrapher>(
     });
 
     match outcome {
-        Ok(segments) => {
+        Ok(transcript) => {
             if let Some(e) = write_error {
                 return Err(RunError::Io(e));
             }
-            let paragraphs = paragrapher.paragraphs(&segments);
+            let paragraphs = paragrapher.paragraphs(&sentences(&transcript));
             write_line(&mut out, &Message::Result { paragraphs }).map_err(RunError::Io)
         }
         Err(e) => {
@@ -73,7 +73,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::{PauseGap, Segment};
+    use crate::{PauseGap, Segment, Sentence, Transcript};
 
     #[derive(Debug, thiserror::Error)]
     #[error("fake engine failed")]
@@ -112,12 +112,12 @@ mod tests {
             _pcm: &Pcm16kMono,
             opts: &Options,
             progress: &mut dyn FnMut(Progress),
-        ) -> Result<Vec<Segment>, FakeError> {
+        ) -> Result<Transcript, FakeError> {
             *self.seen_opts.borrow_mut() = Some(opts.clone());
             for p in &self.progress {
                 progress(*p);
             }
-            self.result.clone().map_err(|()| FakeError)
+            self.result.clone().map(transcript).map_err(|()| FakeError)
         }
     }
 
@@ -126,6 +126,14 @@ mod tests {
             start: Duration::from_millis(start_ms),
             end: Duration::from_millis(end_ms),
             text: text.into(),
+            words: Vec::new(),
+        }
+    }
+
+    fn transcript(segments: Vec<Segment>) -> Transcript {
+        Transcript {
+            segments,
+            silences: Vec::new(),
         }
     }
 
@@ -149,7 +157,7 @@ mod tests {
                 Progress::Transcribing { percent: 0 },
                 Progress::Transcribing { percent: 50 },
             ],
-            vec![seg(0, 1000, " Hello"), seg(5000, 6000, "again ")],
+            vec![seg(0, 1000, " Hello."), seg(5000, 6000, "Again. ")],
         );
         let (result, out) = run_to_string(&engine);
         assert!(result.is_ok());
@@ -159,7 +167,7 @@ mod tests {
                 "{\"type\":\"progress\",\"stage\":\"loading\"}\n",
                 "{\"type\":\"progress\",\"stage\":\"transcribing\",\"percent\":0}\n",
                 "{\"type\":\"progress\",\"stage\":\"transcribing\",\"percent\":50}\n",
-                "{\"type\":\"result\",\"paragraphs\":[\"Hello\",\"again\"]}\n",
+                "{\"type\":\"result\",\"paragraphs\":[\"Hello.\",\"Again.\"]}\n",
             )
         );
     }
@@ -459,7 +467,7 @@ mod tests {
             _: &Pcm16kMono,
             _: &Options,
             progress: &mut dyn FnMut(Progress),
-        ) -> Result<Vec<Segment>, FakeError> {
+        ) -> Result<Transcript, FakeError> {
             progress(Progress::Loading);
             self.seen
                 .borrow_mut()
@@ -468,7 +476,7 @@ mod tests {
             self.seen
                 .borrow_mut()
                 .push(String::from_utf8(self.out.0.borrow().clone()).unwrap());
-            Ok(vec![])
+            Ok(Transcript::default())
         }
     }
 
@@ -498,20 +506,19 @@ mod tests {
         );
     }
 
-    /// Records the segments it was given.
-    struct RecordingParagrapher(RefCell<Option<Vec<Segment>>>);
+    /// Records the sentences it was given.
+    struct RecordingParagrapher(RefCell<Option<Vec<Sentence>>>);
 
     impl Paragrapher for RecordingParagrapher {
-        fn paragraphs(&self, segments: &[Segment]) -> Vec<String> {
-            *self.0.borrow_mut() = Some(segments.to_vec());
+        fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String> {
+            *self.0.borrow_mut() = Some(sentences.to_vec());
             vec!["p\"1\"".into(), "p\n2".into()]
         }
     }
 
     #[test]
-    fn engine_segments_go_to_the_paragrapher_and_its_output_is_the_result() {
-        let segments = vec![seg(0, 10, " a "), seg(5000, 6000, "b")];
-        let engine = Fake::ok(vec![], segments.clone());
+    fn engine_sentences_go_to_the_paragrapher_and_its_output_is_the_result() {
+        let engine = Fake::ok(vec![], vec![seg(0, 10, " a. "), seg(5000, 6000, "b")]);
         let paragrapher = RecordingParagrapher(RefCell::new(None));
         let mut out = Vec::new();
         run(
@@ -522,7 +529,17 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        assert_eq!(paragrapher.0.borrow().as_ref(), Some(&segments));
+        let expected = vec![
+            Sentence {
+                text: "a.".into(),
+                pause_after: Duration::from_millis(4990),
+            },
+            Sentence {
+                text: "b".into(),
+                pause_after: Duration::ZERO,
+            },
+        ];
+        assert_eq!(paragrapher.0.borrow().as_ref(), Some(&expected));
         assert_eq!(
             String::from_utf8(out).unwrap(),
             "{\"type\":\"result\",\"paragraphs\":[\"p\\\"1\\\"\",\"p\\n2\"]}\n"
@@ -544,7 +561,7 @@ mod tests {
 
     #[test]
     fn custom_pause_gap_is_honoured() {
-        let engine = Fake::ok(vec![], vec![seg(0, 1000, "a"), seg(1300, 2000, "b")]);
+        let engine = Fake::ok(vec![], vec![seg(0, 1000, "a."), seg(1300, 2000, "b.")]);
         let mut out = Vec::new();
         run(
             &engine,
@@ -556,7 +573,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "{\"type\":\"result\",\"paragraphs\":[\"a\",\"b\"]}\n"
+            "{\"type\":\"result\",\"paragraphs\":[\"a.\",\"b.\"]}\n"
         );
     }
 
@@ -570,8 +587,8 @@ mod tests {
             pcm: &Pcm16kMono,
             _: &Options,
             _: &mut dyn FnMut(Progress),
-        ) -> Result<Vec<Segment>, FakeError> {
-            Ok(vec![seg(0, 1, &pcm.0.len().to_string())])
+        ) -> Result<Transcript, FakeError> {
+            Ok(transcript(vec![seg(0, 1, &pcm.0.len().to_string())]))
         }
     }
 
@@ -610,7 +627,7 @@ mod tests {
             _: &Pcm16kMono,
             _: &Options,
             _: &mut dyn FnMut(Progress),
-        ) -> Result<Vec<Segment>, NastyError> {
+        ) -> Result<Transcript, NastyError> {
             Err(NastyError(NastyCause))
         }
     }

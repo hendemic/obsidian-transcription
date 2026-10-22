@@ -24,6 +24,36 @@ pub struct Segment {
     pub start: Duration,
     pub end: Duration,
     pub text: String,
+    /// The segment's text split into timed pieces, in order; concatenated,
+    /// their text is `text`. Empty when the engine has no word timing, in
+    /// which case the segment is treated as one piece.
+    pub words: Vec<Word>,
+}
+
+/// A timed piece of a [`Segment`]'s text: usually one decoder token, such as
+/// `" walk"` or `"."`, with its leading space.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Word {
+    pub start: Duration,
+    pub end: Duration,
+    pub text: String,
+}
+
+/// A stretch of the original audio in which voice activity detection found no speech.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Silence {
+    pub start: Duration,
+    pub end: Duration,
+}
+
+/// The output of a [`Transcriber`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Transcript {
+    /// In chronological order.
+    pub segments: Vec<Segment>,
+    /// Silences between speech, in chronological order. Empty when the engine
+    /// ran without voice activity detection.
+    pub silences: Vec<Silence>,
 }
 
 /// Per-transcription options.
@@ -54,12 +84,11 @@ pub trait Transcriber {
 
     /// Transcribes `pcm`, calling `progress` as work advances.
     ///
-    /// Returned segments are in chronological order, with timestamps relative
-    /// to the start of `pcm`.
+    /// Timestamps in the returned transcript are relative to the start of `pcm`.
     fn transcribe(
         &self,
         pcm: &Pcm16kMono,
         opts: &Options,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<Vec<Segment>, Self::Error>;
+    ) -> Result<Transcript, Self::Error>;
 }

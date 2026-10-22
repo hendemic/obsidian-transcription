@@ -6,9 +6,12 @@
 //! which skips that step, so the engine runs whisper.cpp's Silero VAD itself
 //! (via `WhisperVadContext`) and uses these helpers to feed only speech to the
 //! decoder while keeping segment timestamps on the original timeline. Real
-//! timestamps matter here: `PauseGap` paragraphs on the silences VAD removes.
+//! timestamps matter here: paragraph breaks depend on the pauses VAD removes,
+//! and the gaps between spans are reported as [`Silence`]s.
 
 use std::time::Duration;
+
+use transcribe_core::Silence;
 
 use transcribe_core::SAMPLE_RATE;
 
@@ -89,9 +92,26 @@ impl TimeMap {
     pub fn to_original(&self, centiseconds: i64) -> Duration {
         let cs = usize::try_from(centiseconds).unwrap_or(0);
         let processed = cs.saturating_mul(SAMPLE_RATE as usize / 100);
-        let original = self.to_original_samples(processed);
-        Duration::from_secs_f64(original as f64 / f64::from(SAMPLE_RATE))
+        samples_to_duration(self.to_original_samples(processed))
     }
+}
+
+fn samples_to_duration(samples: usize) -> Duration {
+    Duration::from_secs_f64(samples as f64 / f64::from(SAMPLE_RATE))
+}
+
+/// The gaps between consecutive speech spans, in the original audio.
+pub(crate) fn silences(spans: &[SpeechSpan]) -> Vec<Silence> {
+    spans
+        .windows(2)
+        .filter_map(|pair| match pair {
+            [a, b] if b.start > a.end => Some(Silence {
+                start: samples_to_duration(a.end),
+                end: samples_to_duration(b.start),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Copies `spans` of `samples` into one buffer, extending every span but the
@@ -138,6 +158,36 @@ mod tests {
     use super::*;
 
     const SR: usize = SAMPLE_RATE as usize;
+
+    #[test]
+    fn silences_are_the_gaps_between_spans() {
+        let spans = [
+            span(SR, 2 * SR),
+            span(3 * SR, 4 * SR),
+            span(4 * SR, 5 * SR),
+            span(7 * SR, 8 * SR),
+        ];
+        assert_eq!(
+            silences(&spans),
+            vec![
+                Silence {
+                    start: Duration::from_secs(2),
+                    end: Duration::from_secs(3),
+                },
+                Silence {
+                    start: Duration::from_secs(5),
+                    end: Duration::from_secs(7),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn overlapping_or_single_spans_have_no_silences() {
+        assert!(silences(&[]).is_empty());
+        assert!(silences(&[span(0, SR)]).is_empty());
+        assert!(silences(&[span(0, 2 * SR), span(SR, 3 * SR)]).is_empty());
+    }
 
     #[test]
     fn identity_map_passes_through() {
