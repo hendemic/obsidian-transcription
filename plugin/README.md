@@ -2,7 +2,7 @@
 
 Transcribe audio recordings in your notes with Whisper, entirely on your machine. Transcripts are split into paragraphs where the topic changes.
 
-Desktop only: macOS (Apple Silicon) and Linux (x64).
+Desktop only: macOS (Apple Silicon) and Linux (x64, glibc 2.39+, e.g. Ubuntu 24.04 or newer).
 
 ## Use
 
@@ -12,7 +12,7 @@ Right-click an audio embed in a note, or an audio file in the file explorer, and
 
 - **Language:** `auto`, or a code such as `en`.
 - **Initial prompt:** names or terms the transcript should spell correctly.
-- **GPU backend (Linux):** Auto uses CUDA when available, otherwise Vulkan. CUDA needs NVIDIA driver 550+ and the CUDA 12 runtime; with only the driver, choose Vulkan.
+- **GPU backend (Linux):** Auto uses CUDA when available, otherwise Vulkan. CUDA needs NVIDIA driver 560+ and the CUDA 12.6+ runtime; with only the driver, choose Vulkan.
 
 ## Downloads and privacy
 

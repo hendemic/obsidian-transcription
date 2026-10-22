@@ -43,17 +43,18 @@ jobs:
             os: macos-14
             features: metal,coreml
           - asset: transcribe-cli-linux-x64-cuda
-            # Linux builds use ubuntu-22.04 (glibc 2.35) so the binaries run on common current distros.
-            # Targets CUDA 12.4. The binary links the CUDA runtime/cuBLAS dynamically, so users need
-            # an NVIDIA driver compatible with CUDA 12.4 (550+) and the CUDA 12 runtime libraries installed.
+            # Linux builds use ubuntu-24.04, so the binaries need glibc 2.39+: the prebuilt ONNX
+            # Runtime that ort links statically needs glibc 2.38+ and fails to link on 22.04.
+            # Targets CUDA 12.6. The binary links the CUDA runtime/cuBLAS dynamically, so users need
+            # an NVIDIA driver 560+ and the CUDA 12.6+ runtime libraries installed.
             # Nothing from the CUDA toolkit is bundled into the binary or the release.
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             features: cuda
           - asset: transcribe-cli-linux-x64-vulkan
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             features: vulkan
           - asset: transcribe-cli-linux-x64-cpu
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             features: ""
     runs-on: ${{ matrix.os }}
     permissions:
@@ -68,28 +69,21 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
 
-      - name: Install CUDA toolkit 12.4
+      - name: Install CUDA toolkit 12.6
         if: matrix.asset == 'transcribe-cli-linux-x64-cuda'
         run: |
-          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
-          sudo apt-get install -y cuda-nvcc-12-4 cuda-cudart-dev-12-4 libcublas-dev-12-4
-          echo "/usr/local/cuda-12.4/bin" >> "$GITHUB_PATH"
-          echo "CUDA_PATH=/usr/local/cuda-12.4" >> "$GITHUB_ENV"
+          sudo apt-get install -y cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcublas-dev-12-6
+          echo "/usr/local/cuda-12.6/bin" >> "$GITHUB_PATH"
+          echo "CUDA_PATH=/usr/local/cuda-12.6" >> "$GITHUB_ENV"
           # Common GPU generations only (Turing to Ada); keeps build time down.
           echo "CMAKE_CUDA_ARCHITECTURES=75;80;86;89" >> "$GITHUB_ENV"
 
       - name: Install Vulkan headers and glslc
         if: matrix.asset == 'transcribe-cli-linux-x64-vulkan'
-        # Ubuntu 22.04 has no glslc package; LunarG's repository provides it (in shaderc).
-        # LunarG's libvulkan-dev ships without headers, hence vulkan-headers.
-        run: |
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
-          sudo apt-get update
-          sudo apt-get install -y libvulkan-dev vulkan-headers shaderc
-          glslc --version
+        run: sudo apt-get install -y libvulkan-dev glslc
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
