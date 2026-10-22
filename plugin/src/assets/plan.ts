@@ -17,7 +17,6 @@ import type { LinuxBackend } from "../settings-model";
 /** Node `process.platform` value; "darwin" and "linux" are supported. */
 export type Platform = string;
 export type Env = Record<string, string | undefined>;
-export type ResolvedBackend = "cuda" | "vulkan" | "cpu";
 
 /** Data directory outside the vault, so large models do not sync. */
 export function resolveDataDir(platform: Platform, env: Env, home: string): string {
@@ -38,32 +37,17 @@ function joinPath(...parts: string[]): string {
 }
 
 /**
- * Whether the CUDA build is usable: `nvidia-smi` is present AND `ldconfig -p` lists the CUDA 12
- * runtime libraries. `ldconfigOutput` is null when `ldconfig` could not be run (assume not usable).
- */
-export function isCudaUsable(hasNvidiaSmi: boolean, ldconfigOutput: string | null): boolean {
-	if (!hasNvidiaSmi || ldconfigOutput === null) return false;
-	return /\blibcudart\.so\.12\b/.test(ldconfigOutput) && /\blibcublas\.so\.12\b/.test(ldconfigOutput);
-}
-
-/** "auto" picks CUDA when `cudaUsable` (see isCudaUsable), else Vulkan. CPU only when chosen explicitly. */
-export function resolveLinuxBackend(setting: LinuxBackend, cudaUsable: boolean): ResolvedBackend {
-	if (setting === "auto") return cudaUsable ? "cuda" : "vulkan";
-	return setting;
-}
-
-/**
  * Release variant for this machine, or null when there is no published build
  * (unsupported platform/arch).
  */
 export function sidecarVariant(
 	platform: Platform,
 	arch: string,
-	backend: ResolvedBackend,
+	backend: LinuxBackend,
 ): SidecarVariant | null {
 	if (platform === "darwin") return arch === "arm64" ? "macos-arm64" : null;
 	if (platform === "linux" && arch === "x64") {
-		return backend === "cuda" ? "linux-x64-cuda" : backend === "vulkan" ? "linux-x64-vulkan" : "linux-x64-cpu";
+		return backend === "vulkan" ? "linux-x64-vulkan" : "linux-x64-cpu";
 	}
 	return null;
 }
@@ -87,7 +71,7 @@ export interface AssetSpec {
 export interface PlanInput {
 	platform: Platform;
 	arch: string;
-	backend: ResolvedBackend;
+	backend: LinuxBackend;
 	dataDir: string;
 	pluginVersion: string;
 	/** When true the sidecar comes from the settings override and is not planned for download. */
