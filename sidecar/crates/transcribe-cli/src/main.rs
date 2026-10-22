@@ -9,6 +9,8 @@ mod pcm;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -154,7 +156,10 @@ fn transcribe(args: TranscribeArgs) -> ExitCode {
         },
     };
     let pause_gap = PauseGap::new(Duration::from_millis(args.pause_gap_ms));
-    let paragrapher = paragrapher(args.paragraph_model, args.paragraph_tokenizer, pause_gap);
+    let paragrapher = Paragraphs::load_in_background(
+        args.paragraph_model.zip(args.paragraph_tokenizer),
+        pause_gap,
+    );
     let opts = Options {
         language: args.language,
         initial_prompt: args.prompt,
@@ -172,39 +177,57 @@ fn transcribe(args: TranscribeArgs) -> ExitCode {
     }
 }
 
-/// How to break paragraphs: by content when the paragraph model loads, by
-/// pauses otherwise. A model that fails to load is reported on stderr but does
-/// not fail the transcription.
-enum Paragraphs {
-    Pauses(PauseGap),
-    Content(Box<ContentGate<OnnxEmbedder>>),
+type EmbedderLoad = thread::JoinHandle<Result<OnnxEmbedder, embed_onnx::Error>>;
+
+/// Breaks paragraphs by content when the paragraph model loads, by pauses
+/// otherwise. A model that fails to load is reported on stderr but does not
+/// fail the transcription.
+///
+/// The model loads on a background thread while Whisper runs, so it neither
+/// delays the first progress line nor adds to the total time.
+struct Paragraphs {
+    pause_gap: PauseGap,
+    model: Mutex<Option<EmbedderLoad>>,
 }
 
-impl Paragrapher for Paragraphs {
-    fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String> {
-        match self {
-            Self::Pauses(p) => p.paragraphs(sentences),
-            Self::Content(p) => p.paragraphs(sentences),
+impl Paragraphs {
+    fn load_in_background(paths: Option<(PathBuf, PathBuf)>, pause_gap: PauseGap) -> Self {
+        let load = paths
+            .map(|(model, tokenizer)| thread::spawn(move || OnnxEmbedder::new(model, tokenizer)));
+        Self {
+            pause_gap,
+            model: Mutex::new(load),
+        }
+    }
+
+    fn embedder(&self) -> Option<OnnxEmbedder> {
+        let load = self
+            .model
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()?;
+        match load.join() {
+            Ok(Ok(embedder)) => Some(embedder),
+            Ok(Err(e)) => {
+                eprintln!(
+                    "warning: {}; breaking paragraphs on pauses only",
+                    error_message(&e)
+                );
+                None
+            }
+            Err(_) => {
+                eprintln!("warning: loading the paragraph model panicked; breaking paragraphs on pauses only");
+                None
+            }
         }
     }
 }
 
-fn paragrapher(
-    model: Option<PathBuf>,
-    tokenizer: Option<PathBuf>,
-    pause_gap: PauseGap,
-) -> Paragraphs {
-    let (Some(model), Some(tokenizer)) = (model, tokenizer) else {
-        return Paragraphs::Pauses(pause_gap);
-    };
-    match OnnxEmbedder::new(&model, &tokenizer) {
-        Ok(embedder) => Paragraphs::Content(Box::new(ContentGate::new(embedder, pause_gap))),
-        Err(e) => {
-            eprintln!(
-                "warning: {}; breaking paragraphs on pauses only",
-                error_message(&e)
-            );
-            Paragraphs::Pauses(pause_gap)
+impl Paragrapher for Paragraphs {
+    fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String> {
+        match self.embedder() {
+            Some(embedder) => ContentGate::new(embedder, self.pause_gap).paragraphs(sentences),
+            None => self.pause_gap.paragraphs(sentences),
         }
     }
 }
@@ -320,17 +343,24 @@ mod tests {
     }
 
     #[test]
-    fn missing_paragraph_model_falls_back_to_pauses() {
-        let p = paragrapher(
-            Some("/nonexistent/p.onnx".into()),
-            Some("/nonexistent/t.json".into()),
+    fn missing_or_absent_paragraph_model_falls_back_to_pauses() {
+        let sentences = [
+            Sentence {
+                text: "One.".into(),
+                pause_after: Duration::from_secs(5),
+            },
+            Sentence {
+                text: "Two.".into(),
+                pause_after: Duration::ZERO,
+            },
+        ];
+        let missing = Paragraphs::load_in_background(
+            Some(("/nonexistent/p.onnx".into(), "/nonexistent/t.json".into())),
             PauseGap::default(),
         );
-        assert!(matches!(p, Paragraphs::Pauses(_)));
-        assert!(matches!(
-            paragrapher(None, None, PauseGap::default()),
-            Paragraphs::Pauses(_)
-        ));
+        assert_eq!(missing.paragraphs(&sentences), vec!["One.", "Two."]);
+        let absent = Paragraphs::load_in_background(None, PauseGap::default());
+        assert_eq!(absent.paragraphs(&sentences), vec!["One.", "Two."]);
     }
 
     #[test]
