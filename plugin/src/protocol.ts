@@ -69,6 +69,15 @@ export class LineBuffer {
 	}
 }
 
+export const MIN_PAUSE_GAP_SECONDS = 0.1;
+export const MAX_PAUSE_GAP_SECONDS = 60;
+
+/** Clamp to a sane range, rounded to whole milliseconds so it formats as a plain integer. */
+export function clampPauseGapSeconds(seconds: number): number {
+	const ms = Math.round(seconds * 1000);
+	return Math.min(MAX_PAUSE_GAP_SECONDS * 1000, Math.max(MIN_PAUSE_GAP_SECONDS * 1000, ms)) / 1000;
+}
+
 export interface TranscribeArgsInput {
 	modelPath: string;
 	vadModelPath?: string;
@@ -79,15 +88,17 @@ export interface TranscribeArgsInput {
 }
 
 export function buildTranscribeArgs(input: TranscribeArgsInput): string[] {
+	// Free-text values use `--flag=value` so one starting with "-" is never read as another option.
+	// Paths are absolute and the gap is numeric, so they keep the separate-argument form.
 	const args = ["transcribe", "--model", input.modelPath];
 	if (input.vadModelPath) args.push("--vad-model", input.vadModelPath);
 	const language = input.language?.trim();
-	if (language && language.toLowerCase() !== "auto") args.push("--language", language);
+	if (language && language.toLowerCase() !== "auto") args.push(`--language=${language}`);
 	const prompt = input.prompt?.trim();
-	if (prompt) args.push("--prompt", prompt);
+	if (prompt) args.push(`--prompt=${prompt}`);
 	const gap = input.pauseGapSeconds;
 	if (gap !== undefined && Number.isFinite(gap) && gap > 0) {
-		args.push("--pause-gap-ms", String(Math.round(gap * 1000)));
+		args.push("--pause-gap-ms", String(Math.round(clampPauseGapSeconds(gap) * 1000)));
 	}
 	return args;
 }

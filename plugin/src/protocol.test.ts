@@ -239,10 +239,8 @@ describe("buildTranscribeArgs", () => {
 			"/m/model.bin",
 			"--vad-model",
 			"/m/vad.bin",
-			"--language",
-			"de",
-			"--prompt",
-			"Anke, Jörg",
+			"--language=de",
+			"--prompt=Anke, Jörg",
 			"--pause-gap-ms",
 			"2500",
 		]);
@@ -276,8 +274,7 @@ describe("buildTranscribeArgs", () => {
 				"transcribe",
 				"--model",
 				"m",
-				"--language",
-				"en",
+				"--language=en",
 			]);
 		});
 	});
@@ -286,23 +283,23 @@ describe("buildTranscribeArgs", () => {
 		it("passes a prompt with spaces and quotes as one argument, unescaped", () => {
 			const prompt = `Names: "Zoë" O'Brien, Dr. Ngũgĩ; $HOME && rm -rf / \`x\``;
 			const args = buildTranscribeArgs({ modelPath: "m", prompt });
-			expect(args.slice(-2)).toEqual(["--prompt", prompt]);
+			expect(args.slice(-1)).toEqual([`--prompt=${prompt}`]);
 		});
 
 		it("trims the prompt and omits an empty or whitespace-only one", () => {
-			expect(buildTranscribeArgs({ modelPath: "m", prompt: "  hi  " }).slice(-1)).toEqual(["hi"]);
+			expect(buildTranscribeArgs({ modelPath: "m", prompt: "  hi  " }).slice(-1)).toEqual(["--prompt=hi"]);
 			expect(buildTranscribeArgs({ modelPath: "m", prompt: "  \n " })).not.toContain("--prompt");
 		});
 
 		it("keeps internal newlines in a multi-line prompt", () => {
-			expect(buildTranscribeArgs({ modelPath: "m", prompt: "a\nb" }).slice(-1)).toEqual(["a\nb"]);
+			expect(buildTranscribeArgs({ modelPath: "m", prompt: "a\nb" }).slice(-1)).toEqual(["--prompt=a\nb"]);
 		});
 
 		// BUG (cross-component): transcribe-cli declares `--prompt` with plain `#[arg(long)]` (no
 		// `allow_hyphen_values`), so clap rejects a value starting with "-": a prompt like "-ish words" or
 		// "--help" makes every transcription fail with a usage error. Passing `--prompt=<text>` fixes it on the
 		// plugin side (or allow hyphen values on the sidecar side). This test asserts the robust form.
-		it.fails("passes a prompt that starts with a hyphen in a form an option parser cannot misread", () => {
+		it("passes a prompt that starts with a hyphen in a form an option parser cannot misread", () => {
 			const args = buildTranscribeArgs({ modelPath: "m", prompt: "--help" });
 			const i = args.indexOf("--prompt");
 			const safe = args.includes("--prompt=--help") || (i >= 0 && !(args[i + 1] ?? "").startsWith("-"));
@@ -321,7 +318,7 @@ describe("buildTranscribeArgs", () => {
 			expect(ms(0.1)).toBe("100");
 			expect(ms(2.0004)).toBe("2000");
 			expect(ms(2.0006)).toBe("2001");
-			expect(ms(0.0015)).toBe("2");
+			expect(ms(0.0015)).toBe("100"); // clamped to the 0.1 s minimum
 			expect(ms(60)).toBe("60000");
 		});
 
@@ -341,14 +338,14 @@ describe("buildTranscribeArgs", () => {
 
 		// BUG (minor): a positive gap below 0.5 ms rounds to "0", which is sent although the input was
 		// considered valid (> 0). Either clamp to at least 1 or omit the flag.
-		it.fails("never sends a zero gap for a positive setting", () => {
+		it("never sends a zero gap for a positive setting", () => {
 			const a = buildTranscribeArgs({ modelPath: "m", pauseGapSeconds: 0.0001 });
 			expect(a[a.indexOf("--pause-gap-ms") + 1]).not.toBe("0");
 		});
 
 		// BUG (minor): very large values are formatted by String() in exponent notation ("1e+21"), which the
 		// sidecar cannot parse as an integer. mergeSettings accepts any finite positive number.
-		it.fails("always formats the gap as a plain integer", () => {
+		it("always formats the gap as a plain integer", () => {
 			const a = buildTranscribeArgs({ modelPath: "m", pauseGapSeconds: 1e20 });
 			expect(a[a.indexOf("--pause-gap-ms") + 1]).toMatch(/^\d+$/);
 		});

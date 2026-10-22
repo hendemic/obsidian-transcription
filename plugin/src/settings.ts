@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { App, Platform, PluginSettingTab, Setting } from "obsidian";
 import type LocalWhisperTranscribePlugin from "./main";
 import { formatBytes } from "./ui";
+import { clampPauseGapSeconds } from "./protocol";
 import { LINUX_BACKENDS, type LinuxBackend } from "./settings-model";
 
 export class LocalWhisperSettingTab extends PluginSettingTab {
@@ -42,12 +43,12 @@ export class LocalWhisperSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Pause gap (seconds)")
-			.setDesc("Start a new paragraph when the silence between two phrases is at least this long.")
+			.setDesc("Start a new paragraph when the silence between two phrases is at least this long (0.1 to 60).")
 			.addText((t) =>
 				t.setValue(String(settings.pauseGapSeconds)).onChange(async (v) => {
 					const n = Number(v);
 					if (Number.isFinite(n) && n > 0) {
-						settings.pauseGapSeconds = n;
+						settings.pauseGapSeconds = clampPauseGapSeconds(n);
 						await this.plugin.saveSettings();
 					}
 				}),
@@ -56,7 +57,7 @@ export class LocalWhisperSettingTab extends PluginSettingTab {
 		if (Platform.isLinux) {
 			new Setting(containerEl)
 				.setName("GPU backend")
-				.setDesc("Automatic mode picks the build that suits your GPU. CPU is much slower and only needed without a usable GPU.")
+				.setDesc("Automatic mode uses the NVIDIA build only when its runtime libraries are installed, otherwise the generic GPU build. CPU is much slower and only needed without a usable GPU.")
 				.addDropdown((d) => {
 					for (const b of LINUX_BACKENDS) d.addOption(b, b);
 					d.setValue(settings.linuxBackend).onChange(async (v) => {

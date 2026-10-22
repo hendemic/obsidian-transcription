@@ -1,4 +1,5 @@
 // Plugin settings shape and merging (pure; no Obsidian imports).
+import { clampPauseGapSeconds } from "./protocol";
 
 export type LinuxBackend = "auto" | "cuda" | "vulkan" | "cpu";
 export const LINUX_BACKENDS: readonly LinuxBackend[] = ["auto", "cuda", "vulkan", "cpu"];
@@ -29,7 +30,7 @@ export function mergeSettings(stored: unknown): LocalWhisperSettings {
 	if (typeof s.language === "string" && s.language.trim() !== "") out.language = s.language.trim();
 	if (typeof s.initialPrompt === "string") out.initialPrompt = s.initialPrompt;
 	if (typeof s.pauseGapSeconds === "number" && Number.isFinite(s.pauseGapSeconds) && s.pauseGapSeconds > 0) {
-		out.pauseGapSeconds = s.pauseGapSeconds;
+		out.pauseGapSeconds = clampPauseGapSeconds(s.pauseGapSeconds);
 	}
 	if (typeof s.linuxBackend === "string" && (LINUX_BACKENDS as readonly string[]).includes(s.linuxBackend)) {
 		out.linuxBackend = s.linuxBackend as LinuxBackend;

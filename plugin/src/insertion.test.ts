@@ -244,7 +244,7 @@ describe("appendTranscript", () => {
 	// Spec deviation (minor): insertTranscript leaves the note unchanged when there is nothing to insert, but
 	// appendTranscript still adds blank lines. flow.ts only guards with `paragraphs.every(p => p.trim() === "")`,
 	// so today this is unreachable from the UI; the inconsistency is still a trap for callers.
-	it.fails("leaves the note unchanged when there is nothing to append", () => {
+	it("leaves the note unchanged when there is nothing to append", () => {
 		expect(appendTranscript("Note text", [])).toBe("Note text");
 		expect(appendTranscript("Note text", ["  "])).toBe("Note text");
 	});

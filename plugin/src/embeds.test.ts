@@ -227,27 +227,27 @@ describe("findAudioEmbeds (note text)", () => {
 		// text, so it should not be found. Consequence: the occurrence index computed from the DOM (which
 		// has no embed for it) is off by one against the note text, and the transcript goes under the
 		// wrong embed.
-		it.fails("skips an embed inside inline code", () => {
+		it("skips an embed inside inline code", () => {
 			expect(paths("Use `![[a.webm]]` to embed.\n![[a.webm]]")).toEqual(["a.webm"]);
 			expect(findAudioEmbeds("Use `![[a.webm]]` to embed.\n![[a.webm]]")[0]?.line).toBe(1);
 		});
 
 		// BUG: a closing fence must use at least as many markers as the opener (CommonMark 4.5). A ``` line
 		// inside a ```` fence closes it early, so the embed below (still in the code block) is detected.
-		it.fails("does not close a four-backtick fence with a three-backtick line", () => {
+		it("does not close a four-backtick fence with a three-backtick line", () => {
 			expect(paths("````\n```\n![[a.webm]]\n```\n````")).toEqual([]);
 		});
 
 		// BUG: a closing fence cannot carry an info string (CommonMark 4.5). Inside a ``` block, a line
 		// "```js" is content, but findAudioEmbeds treats it as the close.
-		it.fails("does not close a fence with a line that has an info string", () => {
+		it("does not close a fence with a line that has an info string", () => {
 			expect(paths("```\n```js\n![[a.webm]]\n```")).toEqual([]);
 		});
 	});
 
 	// BUG: CommonMark allows balanced parentheses in a link destination, and duplicate files are often
 	// named "rec (1).m4a". The markdown embed regex stops at the first ")".
-	it.fails("finds a markdown embed whose file name contains parentheses", () => {
+	it("finds a markdown embed whose file name contains parentheses", () => {
 		expect(paths("![](rec%20(1).m4a)")).toEqual(["rec (1).m4a"]);
 	});
 });

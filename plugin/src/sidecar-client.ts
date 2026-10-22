@@ -62,8 +62,9 @@ export async function writePcm(stdin: WritableLike, pcm: Float32Array): Promise<
 		broken = true;
 	};
 	stdin.on("error", markBroken);
+	stdin.on("close", markBroken);
 	for (const chunk of pcmChunks(pcm)) {
-		if (broken) return;
+		if (broken) break;
 		if (!stdin.write(chunk)) {
 			await new Promise<void>((resolve) => {
 				const done = (): void => {
@@ -78,6 +79,7 @@ export async function writePcm(stdin: WritableLike, pcm: Float32Array): Promise<
 			});
 		}
 	}
+	stdin.off("close", markBroken); // keep the error listener: a late EPIPE must not be unhandled
 	if (!broken) stdin.end();
 }
 
@@ -102,6 +104,7 @@ export function runSidecar(opts: RunSidecarOptions): Promise<string[]> {
 		let cancelled = false;
 		let stderrText = "";
 		const stdoutLines = new LineBuffer();
+		const stderrDecoder = new TextDecoder("utf-8");
 
 		const finish = (fn: () => void): void => {
 			if (settled) return;
@@ -147,13 +150,13 @@ export function runSidecar(opts: RunSidecarOptions): Promise<string[]> {
 
 		child.stdout?.on("data", (chunk) => stdoutLines.push(chunk).forEach(handleLine));
 		child.stderr?.on("data", (chunk) => {
-			const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+			const text = typeof chunk === "string" ? chunk : stderrDecoder.decode(chunk, { stream: true });
 			stderrText = (stderrText + text).slice(-STDERR_LIMIT);
 		});
 		child.on("error", (err) => {
 			finish(() => reject(new Error(`Could not run the transcription engine: ${err.message}`)));
 		});
-		child.on("close", (code) => {
+		child.on("close", (code, signal) => {
 			stdoutLines.flush().forEach(handleLine);
 			finish(() => {
 				if (cancelled) reject(new TranscriptionCancelled());
@@ -161,7 +164,12 @@ export function runSidecar(opts: RunSidecarOptions): Promise<string[]> {
 				else if (reportedError !== null) reject(new Error(reportedError));
 				else {
 					const tail = stderrText.trim();
-					const how = code === 0 ? "finished without a result" : `exited with code ${String(code)}`;
+					const how =
+						code === 0
+							? "finished without a result"
+							: code === null && signal
+								? `was killed by ${signal}`
+								: `exited with code ${String(code)}`;
 					reject(new Error(`The transcription engine ${how}${tail ? `: ${tail}` : ""}`));
 				}
 			});
