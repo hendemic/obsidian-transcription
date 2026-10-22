@@ -1,0 +1,14 @@
+{
+  "enabledPlugins": {
+    "harness@hendemic-harness": true
+  },
+  "extraKnownMarketplaces": {
+    "hendemic-harness": {
+      "source": {
+        "source": "github",
+        "repo": "hendemic/claude-code-tools",
+        "ref": "v0.0.3"
+      }
+    }
+  }
+}
