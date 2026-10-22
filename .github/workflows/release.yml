@@ -34,7 +34,8 @@ jobs:
   sidecar:
     needs: version-check
     strategy:
-      fail-fast: true
+      # Report every build; the release job still needs all of them.
+      fail-fast: false
       matrix:
         include:
           - asset: transcribe-cli-macos-arm64
@@ -82,11 +83,12 @@ jobs:
       - name: Install Vulkan headers and glslc
         if: matrix.asset == 'transcribe-cli-linux-x64-vulkan'
         # Ubuntu 22.04 has no glslc package; LunarG's repository provides it (in shaderc).
+        # LunarG's libvulkan-dev ships without headers, hence vulkan-headers.
         run: |
           wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
-          sudo apt-get install -y libvulkan-dev shaderc
+          sudo apt-get install -y libvulkan-dev vulkan-headers shaderc
           glslc --version
 
       - uses: dtolnay/rust-toolchain@stable
