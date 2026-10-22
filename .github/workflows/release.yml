@@ -2,10 +2,12 @@ name: Release
 
 # Push a tag `vX.Y.Z` that matches plugin/manifest.json and the sidecar workspace version.
 # Creates a DRAFT release; review and publish it by hand.
+# Run it by hand on a branch for a dry run: everything builds, nothing is released.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,12 +20,13 @@ jobs:
       - name: Tag, manifest.json and Cargo workspace versions must agree
         env:
           TAG: ${{ github.ref_name }}
+          IS_TAG: ${{ github.ref_type == 'tag' }}
         run: |
           manifest=$(jq -r .version plugin/manifest.json)
           cargo=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' sidecar/Cargo.toml)
           echo "tag=$TAG manifest=$manifest cargo=$cargo"
           [ -n "$manifest" ] && [ -n "$cargo" ] || { echo "could not read versions"; exit 1; }
-          [ "$TAG" = "v$manifest" ] || { echo "tag $TAG != v$manifest (plugin/manifest.json)"; exit 1; }
+          [ "$IS_TAG" != true ] || [ "$TAG" = "v$manifest" ] || { echo "tag $TAG != v$manifest (plugin/manifest.json)"; exit 1; }
           [ "$cargo" = "$manifest" ] || { echo "sidecar/Cargo.toml version $cargo != manifest $manifest"; exit 1; }
           jq -e --arg v "$manifest" 'has($v)' plugin/versions.json >/dev/null \
             || { echo "plugin/versions.json has no entry for $manifest"; exit 1; }
@@ -78,7 +81,13 @@ jobs:
 
       - name: Install Vulkan headers and glslc
         if: matrix.asset == 'transcribe-cli-linux-x64-vulkan'
-        run: sudo apt-get install -y libvulkan-dev glslc
+        # Ubuntu 22.04 has no glslc package; LunarG's repository provides it (in shaderc).
+        run: |
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc >/dev/null
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev shaderc
+          glslc --version
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -140,6 +149,7 @@ jobs:
 
   release:
     needs: [sidecar, plugin]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
