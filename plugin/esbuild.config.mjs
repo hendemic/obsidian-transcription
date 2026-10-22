@@ -30,7 +30,7 @@ const context = await esbuild.context({
 		'@lezer/common',
 		'@lezer/highlight',
 		'@lezer/lr',
-		...builtinModules,
+		...builtinModules.flatMap((m) => [m, `node:${m}`]),
 	],
 	format: 'cjs',
 	target: 'es2021',
