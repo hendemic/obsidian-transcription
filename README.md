@@ -24,7 +24,9 @@ Right-click an audio embed in a note, or an audio file in the file explorer, and
 
 ## Downloads and privacy
 
-Nothing is downloaded until you confirm. Every file is checked against a SHA-256 checksum. Your audio is never uploaded.
+Everything runs on your computer: your audio and transcripts never leave your device. Transcription runs on your GPU (Metal on Mac, Vulkan on Linux), and the paragraph model runs on your CPU.
+
+The only network use is downloading the files below, and only after you confirm. Every file is checked against a SHA-256 checksum.
 
 | File | Source | Size |
 | --- | --- | --- |
