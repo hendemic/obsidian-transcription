@@ -28,7 +28,9 @@ pub trait SentenceEmbedder {
 /// Absolute floors stop short transcripts, where ranks mean little, from
 /// breaking on small differences. Paragraphs have at least
 /// [`MIN_SENTENCES`](Self::MIN_SENTENCES) sentences; when breaks compete for
-/// that, the ones with the higher combined rank win.
+/// that, the ones with the higher combined rank win. A paragraph longer than
+/// eight sentences is split at its strongest borderline boundary even without
+/// a long pause, for readability; weak boundaries are never used for this.
 ///
 /// If the embedder fails, this falls back to `fallback` and logs a warning:
 /// a transcript is worth more than its paragraphing.
@@ -51,6 +53,8 @@ const PAUSE_RANK: f64 = 0.70;
 /// Pause a borderline boundary needs to break whatever its rank.
 const MIN_PAUSE: Duration = Duration::from_millis(500);
 const MIN_SENTENCES: usize = 2;
+/// Paragraphs longer than this are split at their strongest borderline boundary.
+const MAX_SENTENCES: usize = 8;
 
 impl<E> ContentGate<E> {
     /// Fewest sentences in a paragraph.
@@ -166,26 +170,47 @@ fn decide(drift: &[f32], pauses: &[Duration]) -> Vec<bool> {
             .collect::<Vec<_>>(),
     );
 
-    let wanted = (0..n).filter(|&i| {
-        let strong = drift_rank[i] >= STRONG_RANK && drift[i] >= STRONG_DRIFT;
-        let weak = drift_rank[i] <= WEAK_RANK || drift[i] < MIN_DRIFT;
-        let long_pause = pause_rank[i] >= PAUSE_RANK && pauses[i] >= MIN_PAUSE;
-        strong || (!weak && long_pause)
-    });
-    let mut by_strength: Vec<usize> = wanted.collect();
-    by_strength.sort_by(|&a, &b| {
-        let (sa, sb) = (drift_rank[a] + pause_rank[a], drift_rank[b] + pause_rank[b]);
-        sb.partial_cmp(&sa).unwrap_or(Ordering::Equal)
-    });
+    let weak: Vec<bool> = (0..n)
+        .map(|i| drift_rank[i] <= WEAK_RANK || drift[i] < MIN_DRIFT)
+        .collect();
+    let score = |i: usize| drift_rank[i] + pause_rank[i];
+    let strongest_first =
+        |a: &usize, b: &usize| score(*b).partial_cmp(&score(*a)).unwrap_or(Ordering::Equal);
+
+    let mut wanted: Vec<usize> = (0..n)
+        .filter(|&i| {
+            let strong = drift_rank[i] >= STRONG_RANK && drift[i] >= STRONG_DRIFT;
+            let long_pause = pause_rank[i] >= PAUSE_RANK && pauses[i] >= MIN_PAUSE;
+            strong || (!weak[i] && long_pause)
+        })
+        .collect();
+    wanted.sort_by(strongest_first);
 
     // Boundary i ends a paragraph after sentence i; there are n + 1 sentences.
+    let sentences = n + 1;
     let mut chosen: Vec<usize> = Vec::new();
-    for i in by_strength {
-        let mut edges = chosen.clone();
-        edges.push(i);
-        edges.sort_unstable();
-        if paragraph_lengths_ok(&edges, n + 1) {
+    for i in wanted {
+        let edges = with_edge(&chosen, i);
+        if paragraph_lengths_ok(&edges, sentences) {
             chosen = edges;
+        }
+    }
+
+    // Split paragraphs that run long at their strongest borderline boundary,
+    // until none is too long or none can be split without a weak break.
+    loop {
+        let split = paragraph_spans(&chosen, sentences)
+            .filter(|(start, end)| end - start > MAX_SENTENCES)
+            .find_map(|(start, end)| {
+                (start..end - 1)
+                    .filter(|&i| {
+                        !weak[i] && paragraph_lengths_ok(&with_edge(&chosen, i), sentences)
+                    })
+                    .min_by(strongest_first)
+            });
+        match split {
+            Some(i) => chosen = with_edge(&chosen, i),
+            None => break,
         }
     }
 
@@ -196,17 +221,28 @@ fn decide(drift: &[f32], pauses: &[Duration]) -> Vec<bool> {
     breaks
 }
 
-/// Whether breaking after each sentence index in sorted `edges` leaves every
-/// paragraph of `sentences` with at least [`MIN_SENTENCES`].
-fn paragraph_lengths_ok(edges: &[usize], sentences: usize) -> bool {
+fn with_edge(edges: &[usize], edge: usize) -> Vec<usize> {
+    let mut out = edges.to_vec();
+    out.push(edge);
+    out.sort_unstable();
+    out
+}
+
+/// `(first sentence, one past the last)` of each paragraph when breaking
+/// after each sentence index in sorted `edges`.
+fn paragraph_spans(edges: &[usize], sentences: usize) -> impl Iterator<Item = (usize, usize)> + '_ {
     let starts = std::iter::once(0).chain(edges.iter().map(|e| e + 1));
     let ends = edges
         .iter()
         .map(|e| e + 1)
         .chain(std::iter::once(sentences));
-    starts
-        .zip(ends)
-        .all(|(start, end)| end.saturating_sub(start) >= MIN_SENTENCES)
+    starts.zip(ends)
+}
+
+/// Whether breaking after each sentence index in sorted `edges` leaves every
+/// paragraph of `sentences` with at least [`MIN_SENTENCES`].
+fn paragraph_lengths_ok(edges: &[usize], sentences: usize) -> bool {
+    paragraph_spans(edges, sentences).all(|(start, end)| end.saturating_sub(start) >= MIN_SENTENCES)
 }
 
 #[cfg(test)]
@@ -332,9 +368,9 @@ mod tests {
 
     #[test]
     fn borderline_needs_an_absolute_pause_too() {
-        // Top-ranked pause, but only 300 ms.
-        let drift = [0.1, 0.2, 0.3, 0.6, 0.4, 0.35, 0.45, 0.2];
-        let mut pauses = [ms(100); 8];
+        // Top-ranked pause, but only 300 ms. Seven sentences, under the length limit.
+        let drift = [0.1, 0.2, 0.3, 0.6, 0.4, 0.35];
+        let mut pauses = [ms(100); 6];
         pauses[3] = ms(300);
         assert!(!decide(&drift, &pauses)[3]);
     }
@@ -354,6 +390,40 @@ mod tests {
         drift[6] = 0.95;
         let breaks = decide(&drift, &[ms(100); 12]);
         assert!(breaks[6] && !breaks[5], "{breaks:?}");
+    }
+
+    #[test]
+    fn long_paragraph_splits_at_its_strongest_borderline_boundary() {
+        // Twelve sentences, no strong shifts or long pauses; boundaries 5 and 7
+        // are borderline, 7 more so.
+        let mut drift = [0.3; 11];
+        drift[5] = 0.6;
+        drift[7] = 0.7;
+        let breaks = decide(&drift, &[ms(100); 11]);
+        let positions: Vec<usize> = (0..breaks.len()).filter(|&i| breaks[i]).collect();
+        assert_eq!(positions, vec![7]);
+    }
+
+    #[test]
+    fn long_paragraph_on_one_topic_is_not_split() {
+        let breaks = decide(&[0.3; 11], &[ms(100); 11]);
+        assert!(breaks.iter().all(|b| !b), "{breaks:?}");
+    }
+
+    #[test]
+    fn very_long_paragraph_is_split_repeatedly() {
+        // Twenty sentences with borderline boundaries every few sentences.
+        let mut drift = [0.3; 19];
+        for i in [4, 9, 14] {
+            drift[i] = 0.65;
+        }
+        let breaks = decide(&drift, &[ms(100); 19]);
+        let mut start = 0;
+        for i in (0..breaks.len()).filter(|&i| breaks[i]) {
+            assert!(i + 1 - start <= MAX_SENTENCES, "{breaks:?}");
+            start = i + 1;
+        }
+        assert!(20 - start <= MAX_SENTENCES, "{breaks:?}");
     }
 
     #[test]
