@@ -467,6 +467,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "engine-whispercpp",
+ "serde_json",
  "thiserror",
  "transcribe-core",
 ]
