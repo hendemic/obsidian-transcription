@@ -238,7 +238,7 @@ describe("runSidecar", () => {
 
 		// BUG (minor): each stderr byte chunk is decoded with a fresh TextDecoder, so a multi-byte character
 		// split across chunks turns into replacement characters in the error shown to the user.
-		it.fails("decodes a UTF-8 character split across stderr chunks", async () => {
+		it("decodes a UTF-8 character split across stderr chunks", async () => {
 			const { child, promise } = setup();
 			const bytes = new TextEncoder().encode("Datei nicht gefunden: Grüße.bin\n");
 			const cut = bytes.indexOf(0xc3) + 1;
@@ -250,7 +250,7 @@ describe("runSidecar", () => {
 
 		// Minor UX gap: a process killed by a signal (e.g. the OOM killer) closes with code null, and the
 		// message reads "exited with code null". The signal is available in the close event but unused.
-		it.fails("names the signal when the process is killed externally", async () => {
+		it("names the signal when the process is killed externally", async () => {
 			const { child, promise } = setup();
 			child.exit(null, "SIGKILL");
 			const e = await rejection(promise);
@@ -528,7 +528,7 @@ describe("writePcm", () => {
 	// BUG (minor): the doc comment says writing "stops quietly if the pipe closes", but a 'close' while
 	// waiting for drain only resumes the loop; the next chunk is written to the closed pipe and the writer then
 	// waits for a drain that never comes (a leaked pending promise). Only 'error' sets the broken flag.
-	it.fails("stops writing when stdin closes while waiting for drain", async () => {
+	it("stops writing when stdin closes while waiting for drain", async () => {
 		const stdin = new FakeStdin();
 		stdin.accept = () => false;
 		void writePcm(stdin, new Float32Array(16384 * 3));

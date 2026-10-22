@@ -19,11 +19,11 @@ Supported audio formats are whatever Obsidian's built-in player decodes: m4a, mp
 | Language | `auto` (default) or a code such as `en`. |
 | Initial prompt | Names or terms to bias the transcript toward. |
 | Pause gap (seconds) | A silence at least this long starts a new paragraph. Default 1.8. |
-| GPU backend (Linux only) | Auto, CUDA, Vulkan, or CPU. Auto uses CUDA if `nvidia-smi` is on your PATH, otherwise Vulkan. CPU downloads a build without GPU support, which is much slower. |
+| GPU backend (Linux only) | Auto, CUDA, Vulkan, or CPU. Auto uses CUDA only if `nvidia-smi` is on your PATH and `ldconfig -p` lists both `libcudart.so.12` and `libcublas.so.12`; otherwise (including when `ldconfig` is unavailable) it uses Vulkan. CPU downloads a build without GPU support, which is much slower. |
 | Sidecar path override | Use your own `transcribe-cli` binary instead of the downloaded one (for development). |
 | Models and engine | Shows what is downloaded and lets you download what is missing. |
 
-**CUDA requirements:** the CUDA build needs an NVIDIA driver 550 or newer **and** the CUDA 12 runtime libraries (`libcudart` and `libcublas`, from the CUDA toolkit or your distro's CUDA runtime packages). If you only have the driver installed, choose **Vulkan**, which also runs on NVIDIA GPUs and needs no extra install.
+**CUDA requirements:** the CUDA build needs an NVIDIA driver 550 or newer **and** the CUDA 12 runtime libraries (`libcudart` and `libcublas`, from the CUDA toolkit or your distro's CUDA runtime packages). Auto mode checks for these libraries and falls back to Vulkan when they are missing. If you only have the driver installed, choose **Vulkan**, which also runs on NVIDIA GPUs and needs no extra install.
 
 ## Downloads (network use disclosure)
 
@@ -41,7 +41,7 @@ Files are stored **outside your vault**, so they are not synced:
 - macOS: `~/Library/Application Support/local-whisper-transcribe/`
 - Linux: `$XDG_DATA_HOME/local-whisper-transcribe/` (default `~/.local/share/local-whisper-transcribe/`)
 
-The downloaded engine is a native executable that the plugin runs on your machine to do the transcription. On Linux the plugin also runs `nvidia-smi` once to detect an NVIDIA GPU. On macOS it runs the system `unzip` to extract the Core ML encoder. Audio is passed to the engine over a pipe; nothing is uploaded.
+The downloaded engine is a native executable that the plugin runs on your machine to do the transcription. On Linux the plugin also runs `nvidia-smi` and `ldconfig -p` once to detect an NVIDIA GPU and the CUDA runtime. On macOS it runs the system `unzip` to extract the Core ML encoder. Audio is passed to the engine over a pipe; nothing is uploaded.
 
 To remove everything, delete the data directory above.
 

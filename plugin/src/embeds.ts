@@ -64,7 +64,27 @@ export interface EmbedMatch {
 }
 
 const WIKI_EMBED = /!\[\[([^\]\n]+?)\]\]/g;
-const MD_EMBED = /!\[[^\]\n]*\]\(\s*(<[^>\n]+>|[^)\n]+?)\s*\)/g;
+const MD_EMBED = /!\[[^\]\n]*\]\(\s*(<[^>\n]+>|(?:[^()\n]|\([^()\n]*\))+?)\s*\)/g;
+
+/** Blank out inline code spans (a backtick run closes on a run of equal length), keeping string length. */
+function maskInlineCode(text: string): string {
+	if (!text.includes("`")) return text;
+	const runs = [...text.matchAll(/`+/g)];
+	let out = text;
+	for (let i = 0; i < runs.length; i++) {
+		const open = runs[i];
+		if (!open) continue;
+		const close = runs.findIndex((r, j) => j > i && r[0].length === open[0].length);
+		if (close < 0) continue;
+		const end = runs[close];
+		if (!end) continue;
+		const from = open.index ?? 0;
+		const to = (end.index ?? 0) + end[0].length;
+		out = out.slice(0, from) + " ".repeat(to - from) + out.slice(to);
+		i = close;
+	}
+	return out;
+}
 
 /** Audio-or-not embeds found in a single line of text (wikilink and markdown forms). */
 export function parseEmbedsInLine(text: string): { path: string; raw: string }[] {
@@ -88,17 +108,27 @@ export function parseEmbedsInLine(text: string): { path: string; raw: string }[]
 export function findAudioEmbeds(content: string): EmbedMatch[] {
 	const out: EmbedMatch[] = [];
 	const lines = content.split(/\r?\n/);
-	let fence: string | null = null;
+	let fence: { char: string; len: number } | null = null;
 	lines.forEach((text, line) => {
-		const fm = /^\s{0,3}(`{3,}|~{3,})/.exec(text);
-		if (fm) {
-			const marker = (fm[1] ?? "")[0] ?? "";
-			if (fence === null) fence = marker;
-			else if (fence === marker) fence = null;
+		const fm = /^\s{0,3}(`{3,}|~{3,})(.*)$/.exec(text);
+		if (fence !== null) {
+			if (fm) {
+				const marker = fm[1] ?? "";
+				if (marker[0] === fence.char && marker.length >= fence.len && (fm[2] ?? "").trim() === "") {
+					fence = null;
+				}
+			}
 			return;
 		}
-		if (fence !== null) return;
-		for (const e of parseEmbedsInLine(text)) {
+		if (fm) {
+			const marker = fm[1] ?? "";
+			// A backtick fence's info string cannot contain backticks (that would be inline code).
+			if (!(marker[0] === "`" && (fm[2] ?? "").includes("`"))) {
+				fence = { char: marker[0] ?? "`", len: marker.length };
+				return;
+			}
+		}
+		for (const e of parseEmbedsInLine(maskInlineCode(text))) {
 			if (isAudioPath(e.path)) out.push({ line, path: e.path, raw: e.raw });
 		}
 	});

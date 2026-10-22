@@ -10,6 +10,7 @@ import { downloadVerified, fetchText } from "./download";
 import {
 	buildAssetPlan,
 	findAsset,
+	isCudaUsable,
 	missingAssets,
 	parseSha256Sums,
 	resolveDataDir,
@@ -35,7 +36,7 @@ export interface ResolvedPaths {
 }
 
 export class AssetManager {
-	private nvidiaSmi: boolean | null = null;
+	private cudaUsable: boolean | null = null;
 	private abort: AbortController | null = null;
 
 	constructor(
@@ -51,17 +52,32 @@ export class AssetManager {
 		return resolveDataDir(process.platform, process.env, homedir());
 	}
 
-	/** Whether `nvidia-smi` runs; cached after the first check. */
+	/** Whether `nvidia-smi` runs and the CUDA 12 runtime libs are loadable; cached after the first check. */
 	async detectNvidia(): Promise<boolean> {
-		if (this.nvidiaSmi === null) {
+		if (this.cudaUsable === null) {
+			let hasSmi = false;
 			try {
 				await execFileAsync("nvidia-smi", ["-L"], { timeout: 10_000 });
-				this.nvidiaSmi = true;
+				hasSmi = true;
 			} catch {
-				this.nvidiaSmi = false;
+				hasSmi = false;
 			}
+			let ldconfig: string | null = null;
+			if (hasSmi) {
+				// GUI-launched apps often lack /sbin on PATH, where Debian/Ubuntu keep ldconfig.
+				for (const bin of ["ldconfig", "/sbin/ldconfig", "/usr/sbin/ldconfig"]) {
+					try {
+						const { stdout } = await execFileAsync(bin, ["-p"], { timeout: 10_000 });
+						ldconfig = String(stdout);
+						break;
+					} catch {
+						// try the next location; if none works, fall back to Vulkan
+					}
+				}
+			}
+			this.cudaUsable = isCudaUsable(hasSmi, ldconfig);
 		}
-		return this.nvidiaSmi;
+		return this.cudaUsable;
 	}
 
 	async plan(): Promise<AssetSpec[]> {

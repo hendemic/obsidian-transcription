@@ -35,9 +35,18 @@ function joinPath(...parts: string[]): string {
 	return parts.map((p, i) => (i === 0 ? p.replace(/\/+$/, "") : p.replace(/^\/+|\/+$/g, ""))).join("/");
 }
 
-/** "auto" picks CUDA when nvidia-smi is on PATH, else Vulkan. CPU only when chosen explicitly. */
-export function resolveLinuxBackend(setting: LinuxBackend, hasNvidiaSmi: boolean): ResolvedBackend {
-	if (setting === "auto") return hasNvidiaSmi ? "cuda" : "vulkan";
+/**
+ * Whether the CUDA build is usable: `nvidia-smi` is present AND `ldconfig -p` lists the CUDA 12
+ * runtime libraries. `ldconfigOutput` is null when `ldconfig` could not be run (assume not usable).
+ */
+export function isCudaUsable(hasNvidiaSmi: boolean, ldconfigOutput: string | null): boolean {
+	if (!hasNvidiaSmi || ldconfigOutput === null) return false;
+	return /\blibcudart\.so\.12\b/.test(ldconfigOutput) && /\blibcublas\.so\.12\b/.test(ldconfigOutput);
+}
+
+/** "auto" picks CUDA when `cudaUsable` (see isCudaUsable), else Vulkan. CPU only when chosen explicitly. */
+export function resolveLinuxBackend(setting: LinuxBackend, cudaUsable: boolean): ResolvedBackend {
+	if (setting === "auto") return cudaUsable ? "cuda" : "vulkan";
 	return setting;
 }
 
@@ -148,7 +157,7 @@ export function parseSha256Sums(text: string): Map<string, string> {
 	const out = new Map<string, string>();
 	for (const line of text.split(/\r?\n/)) {
 		const m = /^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$/.exec(line);
-		if (m?.[1] && m[2]) out.set(m[2], m[1].toLowerCase());
+		if (m?.[1] && m[2]?.trim()) out.set(m[2], m[1].toLowerCase());
 	}
 	return out;
 }

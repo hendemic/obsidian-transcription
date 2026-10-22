@@ -9,6 +9,7 @@ import { MODEL, PLUGIN_ID, SIDECAR_ASSET_NAMES, VAD_MODEL, COREML_ENCODER } from
 import {
 	buildAssetPlan,
 	findAsset,
+	isCudaUsable,
 	missingAssets,
 	parseSha256Sums,
 	resolveDataDir,
@@ -17,12 +18,44 @@ import {
 	type PlanInput,
 } from "./plan";
 
+describe("isCudaUsable", () => {
+	const both = [
+		"\tlibcudart.so.12 (libc6,x86-64) => /usr/local/cuda/lib64/libcudart.so.12",
+		"\tlibcublas.so.12 (libc6,x86-64) => /usr/local/cuda/lib64/libcublas.so.12",
+	].join("\n");
+
+	it("is true with nvidia-smi and both CUDA 12 libs", () => {
+		expect(isCudaUsable(true, both)).toBe(true);
+	});
+
+	it("is false without nvidia-smi even when the libs exist", () => {
+		expect(isCudaUsable(false, both)).toBe(false);
+	});
+
+	it("is false when ldconfig output is unavailable", () => {
+		expect(isCudaUsable(true, null)).toBe(false);
+	});
+
+	it("is false when libcublas is missing", () => {
+		expect(isCudaUsable(true, "\tlibcudart.so.12 (libc6,x86-64) => /x/libcudart.so.12")).toBe(false);
+	});
+
+	it("is false when libcudart is missing", () => {
+		expect(isCudaUsable(true, "\tlibcublas.so.12 (libc6,x86-64) => /x/libcublas.so.12")).toBe(false);
+	});
+
+	it("rejects other CUDA major versions", () => {
+		const v11 = "\tlibcudart.so.11.0 (libc6,x86-64) => /x\n\tlibcublas.so.11 (libc6,x86-64) => /y";
+		expect(isCudaUsable(true, v11)).toBe(false);
+	});
+});
+
 describe("resolveLinuxBackend", () => {
-	it("auto picks cuda when nvidia-smi is present", () => {
+	it("auto picks cuda when CUDA is usable", () => {
 		expect(resolveLinuxBackend("auto", true)).toBe("cuda");
 	});
 
-	it("auto picks vulkan when nvidia-smi is absent", () => {
+	it("auto picks vulkan when CUDA is not usable", () => {
 		expect(resolveLinuxBackend("auto", false)).toBe("vulkan");
 	});
 
@@ -367,7 +400,7 @@ describe("parseSha256Sums", () => {
 
 	// BUG (minor): a hash followed only by whitespace ("<hex>  ") is parsed as an entry whose name is " ",
 	// because `\s+` backtracks to leave one space for the lazy name group.
-	it.fails("skips a line with a hash and only trailing whitespace", () => {
+	it("skips a line with a hash and only trailing whitespace", () => {
 		expect(parseSha256Sums(`${h("a")}  `).size).toBe(0);
 	});
 

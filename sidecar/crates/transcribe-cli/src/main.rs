@@ -47,7 +47,7 @@ struct TranscribeArgs {
     #[arg(long)]
     language: Option<String>,
     /// Initial prompt: names and terms to bias the decoder toward.
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     prompt: Option<String>,
     /// Minimum pause, in milliseconds, that starts a new paragraph.
     #[arg(long, default_value_t = 1800)]

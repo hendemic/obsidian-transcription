@@ -34,6 +34,7 @@ export function insertTranscript(
 /** Append the transcript at the end of the note (fallback when the embed vanished). */
 export function appendTranscript(content: string, paragraphs: readonly string[]): string {
 	const paras = cleanParagraphs(paragraphs);
+	if (paras.length === 0) return content;
 	const eol = content.includes("\r\n") ? "\r\n" : "\n";
 	const base = content.replace(/(\r?\n)*$/, "");
 	const prefix = base.length > 0 ? base + eol + eol : "";
