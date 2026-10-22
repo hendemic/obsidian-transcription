@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/transcribe-core", "crates/engine-whispercpp", "crates/transcribe-cli"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+transcribe-core = { path = "crates/transcribe-core" }
+engine-whispercpp = { path = "crates/engine-whispercpp" }
