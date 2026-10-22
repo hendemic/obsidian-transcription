@@ -190,9 +190,9 @@ describe("buildAssetPlan", () => {
 		);
 	});
 
-	it("fetches the sidecar from the release tagged v<version>, executable, checksum from SHA256SUMS", () => {
+	it("fetches the sidecar from the release tagged with the bare version, executable, checksum from SHA256SUMS", () => {
 		const s = findAsset(buildAssetPlan({ ...linux, pluginVersion: "1.2.3" }), "sidecar");
-		expect(s?.url).toMatch(/\/releases\/download\/v1\.2\.3\/transcribe-cli-linux-x64-vulkan$/);
+		expect(s?.url).toMatch(/\/releases\/download\/1\.2\.3\/transcribe-cli-linux-x64-vulkan$/);
 		expect(s?.executable).toBe(true);
 		expect(s?.sha256).toBeNull();
 	});
@@ -226,7 +226,7 @@ describe("buildAssetPlan", () => {
 		const s = findAsset(buildAssetPlan({ ...linux, backend: "cpu", pluginVersion: "0.3.0" }), "sidecar");
 		expect(s?.releaseAssetName).toBe("transcribe-cli-linux-x64-cpu");
 		expect(s?.releaseAssetName).toBe(SIDECAR_ASSET_NAMES["linux-x64-cpu"]);
-		expect(s?.url).toMatch(/\/releases\/download\/v0\.3\.0\/transcribe-cli-linux-x64-cpu$/);
+		expect(s?.url).toMatch(/\/releases\/download\/0\.3\.0\/transcribe-cli-linux-x64-cpu$/);
 		expect(s?.executable).toBe(true);
 		expect(s?.sha256).toBeNull();
 		expect(s?.dest).toBe("/d/bin/0.3.0/transcribe-cli-linux-x64-cpu");

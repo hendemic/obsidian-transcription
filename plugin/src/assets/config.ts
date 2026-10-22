@@ -74,7 +74,8 @@ export const SIDECAR_ASSET_NAMES: Record<SidecarVariant, string> = {
 };
 
 /**
- * Release assets are fetched from the GitHub release tagged `v<plugin version>`.
+ * Release assets are fetched from the GitHub release tagged with the bare plugin version (`1.2.3`, no
+ * "v"), which is the tag format Obsidian requires for community plugin releases.
  * TODO(release): no release exists yet, so sidecar checksums cannot be pinned here. They are read at
  * download time from the release's `SHA256SUMS` asset instead; a download without a matching entry fails.
  */
@@ -83,5 +84,5 @@ export const SIDECAR_CHECKSUMS_ASSET = "SHA256SUMS";
 export const SIDECAR_APPROX_SIZE_BYTES = 35_000_000;
 
 export function releaseAssetUrl(version: string, assetName: string): string {
-	return `https://github.com/${RELEASE_REPO}/releases/download/v${version}/${assetName}`;
+	return `https://github.com/${RELEASE_REPO}/releases/download/${version}/${assetName}`;
 }

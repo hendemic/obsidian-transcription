@@ -139,7 +139,7 @@ The Core ML encoder is found by whisper.cpp next to the model, so it needs no fl
 ### CI and releases
 
 - CI on push: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (CPU build); plugin typecheck, lint, test, build.
-- Release workflow on tag `v*`: build `transcribe-cli` for `macos-arm64` (`metal,coreml`), `linux-x64-vulkan`, `linux-x64-cpu` (built on Ubuntu 24.04, so glibc 2.39+); attach them with SHA-256 sums, plus `main.js`, `manifest.json` and `styles.css`, to the GitHub release.
+- Release workflow on tag `X.Y.Z` (no "v", as Obsidian requires): build `transcribe-cli` for `macos-arm64` (`metal,coreml`), `linux-x64-vulkan`, `linux-x64-cpu` (built on Ubuntu 24.04, so glibc 2.39+); attach them with SHA-256 sums, plus `main.js`, `manifest.json` and `styles.css`, to the GitHub release.
 
 ### Testing
 

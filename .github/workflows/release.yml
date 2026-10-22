@@ -1,12 +1,13 @@
 name: Release
 
-# Push a tag `vX.Y.Z` that matches plugin/manifest.json and the sidecar workspace version.
+# Push a tag `X.Y.Z` (no "v", as Obsidian requires) that matches plugin/manifest.json and the
+# sidecar workspace version.
 # Creates a DRAFT release; review and publish it by hand.
 # Run it by hand on a branch for a dry run: everything builds, nothing is released.
 on:
   push:
     tags:
-      - "v*"
+      - "[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
           cargo=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' sidecar/Cargo.toml)
           echo "tag=$TAG manifest=$manifest cargo=$cargo"
           [ -n "$manifest" ] && [ -n "$cargo" ] || { echo "could not read versions"; exit 1; }
-          [ "$IS_TAG" != true ] || [ "$TAG" = "v$manifest" ] || { echo "tag $TAG != v$manifest (plugin/manifest.json)"; exit 1; }
+          [ "$IS_TAG" != true ] || [ "$TAG" = "$manifest" ] || { echo "tag $TAG != $manifest (plugin/manifest.json)"; exit 1; }
           [ "$cargo" = "$manifest" ] || { echo "sidecar/Cargo.toml version $cargo != manifest $manifest"; exit 1; }
           jq -e --arg v "$manifest" 'has($v)' plugin/versions.json >/dev/null \
             || { echo "plugin/versions.json has no entry for $manifest"; exit 1; }
