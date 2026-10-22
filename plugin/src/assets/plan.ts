@@ -1,6 +1,5 @@
 // Pure logic: where assets live, which are needed on this platform, and which are missing.
 import {
-	COREML_ENCODER,
 	MODEL,
 	PARAGRAPH_MODEL,
 	PARAGRAPH_TOKENIZER,
@@ -56,10 +55,7 @@ export interface AssetSpec {
 	id: AssetId;
 	label: string;
 	url: string;
-	/** Final location (for the Core ML encoder: the extracted directory). */
 	dest: string;
-	/** Download target when it differs from `dest` (the Core ML zip). */
-	archivePath?: string;
 	sizeBytes: number;
 	/** Hex SHA-256, or null when it must be read from the release's SHA256SUMS. */
 	sha256: string | null;
@@ -114,17 +110,6 @@ export function buildAssetPlan(input: PlanInput): AssetSpec[] {
 			sha256: PARAGRAPH_TOKENIZER.sha256,
 		},
 	];
-	if (input.platform === "darwin") {
-		plan.push({
-			id: "coreml",
-			label: COREML_ENCODER.label,
-			url: COREML_ENCODER.url,
-			dest: `${models}/${COREML_ENCODER.extractedDirName}`,
-			archivePath: `${models}/${COREML_ENCODER.fileName}`,
-			sizeBytes: COREML_ENCODER.sizeBytes,
-			sha256: COREML_ENCODER.sha256,
-		});
-	}
 	if (!input.sidecarOverridden) {
 		const variant = sidecarVariant(input.platform, input.arch, input.backend);
 		if (!variant) {
