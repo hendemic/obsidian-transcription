@@ -2,10 +2,9 @@
 // (docs/plan.md, "Plugin" > "Asset manager").
 //
 // Deliberately not covered:
-// - Downloads, extraction and chmod (download.ts / manager.ts): network and filesystem side effects.
+// - Downloads and chmod (download.ts / manager.ts): network and filesystem side effects.
 import { describe, expect, it } from "vitest";
 import {
-	COREML_ENCODER,
 	MODEL,
 	PARAGRAPH_MODEL,
 	PARAGRAPH_TOKENIZER,
@@ -135,19 +134,10 @@ describe("buildAssetPlan", () => {
 	const mac: PlanInput = { ...linux, platform: "darwin", arch: "arm64" };
 	const ids = (input: PlanInput): string[] => buildAssetPlan(input).map((a) => a.id);
 
-	it("plans model, VAD, paragraph model and sidecar on Linux, without the Core ML encoder", () => {
-		expect(ids(linux).sort()).toEqual(["model", "paragraph-model", "paragraph-tokenizer", "sidecar", "vad"]);
-	});
-
-	it("plans model, VAD, paragraph model, Core ML encoder and sidecar on macOS", () => {
-		expect(ids(mac).sort()).toEqual([
-			"coreml",
-			"model",
-			"paragraph-model",
-			"paragraph-tokenizer",
-			"sidecar",
-			"vad",
-		]);
+	it("plans model, VAD, paragraph model and sidecar on both Linux and macOS", () => {
+		const expected = ["model", "paragraph-model", "paragraph-tokenizer", "sidecar", "vad"];
+		expect(ids(linux).sort()).toEqual(expected);
+		expect(ids(mac).sort()).toEqual(expected);
 	});
 
 	it("puts models under <dataDir>/models with pinned checksums", () => {
@@ -170,15 +160,6 @@ describe("buildAssetPlan", () => {
 			dest: `/d/models/${PARAGRAPH_TOKENIZER.fileName}`,
 			sha256: PARAGRAPH_TOKENIZER.sha256,
 		});
-	});
-
-	it("places the Core ML encoder next to the model, extracted from a zip", () => {
-		const coreml = findAsset(buildAssetPlan(mac), "coreml");
-		expect(coreml?.dest).toBe("/d/models/ggml-base-encoder.mlmodelc");
-		expect(coreml?.archivePath).toBe(`/d/models/${COREML_ENCODER.fileName}`);
-		// whisper.cpp looks for `<model stem>-encoder.mlmodelc` next to the model file.
-		const model = findAsset(buildAssetPlan(mac), "model");
-		expect(coreml?.dest).toBe(model?.dest.replace(/\.bin$/, "-encoder.mlmodelc"));
 	});
 
 	it("plans the sidecar for the resolved Linux backend", () => {
@@ -297,13 +278,6 @@ describe("missingAssets", () => {
 		]);
 	});
 
-	it("treats the Core ML encoder as missing when only its zip exists", () => {
-		const coreml = findAsset(macPlan, "coreml");
-		const present = new Set(macPlan.filter((a) => a.id !== "coreml").map((a) => a.dest));
-		if (coreml?.archivePath) present.add(coreml.archivePath);
-		expect(missingAssets(macPlan, (p) => present.has(p)).map((a) => a.id)).toEqual(["coreml"]);
-	});
-
 	it("does not ask about the sidecar when it is overridden", () => {
 		const plan = buildAssetPlan({
 			platform: "linux",
@@ -330,9 +304,9 @@ describe("findAsset", () => {
 			backend: "vulkan",
 			dataDir: "/d",
 			pluginVersion: "0.1.0",
-			sidecarOverridden: false,
+			sidecarOverridden: true,
 		});
-		expect(findAsset(plan, "coreml")).toBeUndefined();
+		expect(findAsset(plan, "sidecar")).toBeUndefined();
 	});
 });
 

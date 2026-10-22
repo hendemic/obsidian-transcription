@@ -1,10 +1,7 @@
 // Obsidian-free orchestration of asset status and downloads.
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, rm } from "node:fs/promises";
+import { chmod } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname } from "node:path";
-import { promisify } from "node:util";
 import { SIDECAR_CHECKSUMS_ASSET, releaseAssetUrl } from "./config";
 import { downloadVerified, fetchText } from "./download";
 import {
@@ -16,8 +13,6 @@ import {
 	type AssetSpec,
 } from "./plan";
 import type { LocalWhisperSettings } from "../settings-model";
-
-const execFileAsync = promisify(execFile);
 
 export interface DownloadProgress {
 	asset: AssetSpec;
@@ -106,31 +101,18 @@ export class AssetManager {
 					if (!sha256) throw new Error(`No checksum for ${asset.releaseAssetName} in ${SIDECAR_CHECKSUMS_ASSET}`);
 				}
 				if (!sha256) throw new Error(`No checksum available for ${asset.label}`);
-				const target = asset.archivePath ?? asset.dest;
 				await downloadVerified({
 					url: asset.url,
-					destPath: target,
+					destPath: asset.dest,
 					sha256,
 					signal: controller.signal,
 					onProgress: (received, total) =>
 						onProgress({ asset, index, count: todo.length, received, total }),
 				});
-				await this.finalize(asset, target);
+				if (asset.executable) await chmod(asset.dest, 0o755);
 			}
 		} finally {
 			this.abort = null;
-		}
-	}
-
-	private async finalize(asset: AssetSpec, downloaded: string): Promise<void> {
-		if (asset.executable) {
-			await chmod(downloaded, 0o755);
-		}
-		if (asset.id === "coreml") {
-			// macOS ships /usr/bin/unzip. Extract next to the model, then drop the archive.
-			await execFileAsync("unzip", ["-o", "-q", downloaded, "-d", dirname(downloaded)]);
-			await rm(downloaded, { force: true });
-			if (!existsSync(asset.dest)) throw new Error("Core ML encoder archive did not contain the expected folder");
 		}
 	}
 }

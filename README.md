@@ -14,7 +14,7 @@ Not in the community plugin list yet. To install by hand:
 
 ## Use
 
-Right-click an audio embed in a note, or an audio file in the file explorer, and choose **Transcribe**. The first time, the plugin asks to download what it needs (about 350 MB).
+Right-click an audio embed in a note, or an audio file in the file explorer, and choose **Transcribe**. The first time, the plugin asks to download what it needs (about 740 MB).
 
 ## Settings
 
@@ -30,12 +30,11 @@ The only network use is downloading the files below, and only after you confirm.
 
 | File | Source | Size |
 | --- | --- | --- |
-| Whisper base model | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 148 MB |
-| Core ML encoder (macOS only) | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 38 MB |
+| Whisper large-v3-turbo model (q5_0) | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 574 MB |
 | Paragraph model and tokenizer | [sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2) | 127 MB |
 | Voice detection model | [ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad) | 1 MB |
 | Transcription engine | [this repo's releases](https://github.com/hendemic/obsidian-transcription/releases) | 35 MB |
 
 Files are stored outside your vault, in `~/Library/Application Support/local-whisper-transcribe/` (macOS) or `~/.local/share/local-whisper-transcribe/` (Linux). Delete that folder to remove them.
 
-The transcription engine is a native program the plugin runs locally. On macOS the plugin also runs `unzip` to extract the Core ML encoder.
+The transcription engine is a native program the plugin runs locally.

@@ -5,7 +5,7 @@ export const PLUGIN_ID = "local-whisper-transcribe";
 
 export const RELEASE_REPO = "hendemic/obsidian-transcription";
 
-export type AssetId = "model" | "vad" | "paragraph-model" | "paragraph-tokenizer" | "coreml" | "sidecar";
+export type AssetId = "model" | "vad" | "paragraph-model" | "paragraph-tokenizer" | "sidecar";
 
 export interface FileAssetConfig {
 	label: string;
@@ -17,12 +17,16 @@ export interface FileAssetConfig {
 	sha256: string;
 }
 
+/**
+ * Close to large-v3 accuracy with a much smaller decoder. q5_0 keeps the download under 600 MB. No
+ * Core ML encoder: it is unquantized (1.2 GB), so macOS runs the whole model on Metal instead.
+ */
 export const MODEL: FileAssetConfig = {
-	label: "Whisper base model",
-	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-	fileName: "ggml-base.bin",
-	sizeBytes: 147_951_465,
-	sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+	label: "Whisper large-v3-turbo model (q5_0)",
+	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+	fileName: "ggml-large-v3-turbo-q5_0.bin",
+	sizeBytes: 574_041_195,
+	sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
 };
 
 export const VAD_MODEL: FileAssetConfig = {
@@ -53,16 +57,6 @@ export const PARAGRAPH_TOKENIZER: FileAssetConfig = {
 	fileName: "paragraph-minilm-l12-tokenizer.json",
 	sizeBytes: 9_081_518,
 	sha256: "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
-};
-
-/** macOS only. Extracted next to the model; whisper.cpp finds it by name. */
-export const COREML_ENCODER: FileAssetConfig & { extractedDirName: string } = {
-	label: "Core ML encoder (Apple Neural Engine)",
-	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-encoder.mlmodelc.zip",
-	fileName: "ggml-base-encoder.mlmodelc.zip",
-	extractedDirName: "ggml-base-encoder.mlmodelc",
-	sizeBytes: 37_922_638,
-	sha256: "7e6ab77041942572f239b5b602f8aaa1c3ed29d73e3d8f20abea03a773541089",
 };
 
 export type SidecarVariant = "macos-arm64" | "linux-x64-vulkan" | "linux-x64-cpu";

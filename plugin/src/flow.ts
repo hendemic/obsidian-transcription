@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { App, Notice, TFile } from "obsidian";
 import type { AssetManager } from "./assets/manager";
-import { decodeTo16kMono } from "./decode";
+import { decodeTo16kMono, TARGET_SAMPLE_RATE } from "./decode";
 import {
 	appendTranscript,
 	buildTranscriptNote,
@@ -11,6 +11,7 @@ import {
 	uniqueTranscriptPath,
 	type EmbedLocator,
 } from "./insertion";
+import { formatTimeLeft, ProgressEstimator } from "./progress-estimate";
 import { buildTranscribeArgs } from "./protocol";
 import type { LocalWhisperSettings } from "./settings-model";
 import { runSidecar, TranscriptionCancelled, type ChildLike } from "./sidecar-client";
@@ -22,6 +23,8 @@ export type TranscribeRequest =
 
 export class TranscribeFlow {
 	private controller: AbortController | null = null;
+	/** Speed of the last transcription this session, so the next one has an estimate before its first report. */
+	private secondsPerAudioSecond: number | null = null;
 
 	constructor(
 		private readonly app: App,
@@ -45,6 +48,7 @@ export class TranscribeFlow {
 		const controller = new AbortController();
 		this.controller = controller;
 		let progress: ReturnType<typeof createProgressNotice> | null = null;
+		let ticker: number | null = null;
 		try {
 			if (!(await ensureAssets(this.app, this.assets))) return;
 			const paths = await this.assets.paths();
@@ -67,17 +71,40 @@ export class TranscribeFlow {
 				pauseGapSeconds: settings.pauseGapSeconds,
 			});
 			const notice = progress;
+			const audioSeconds = pcm.length / TARGET_SAMPLE_RATE;
+			const estimator = new ProgressEstimator(
+				this.secondsPerAudioSecond === null ? null : this.secondsPerAudioSecond * audioSeconds,
+			);
+			let transcribing = false;
+			const render = (): void => {
+				if (!transcribing) return;
+				const { percent, secondsLeft } = estimator.estimate(Date.now());
+				notice.setText(
+					percent >= 100
+						? "Adding paragraphs…"
+						: `Transcribing… ${percent}% (${formatTimeLeft(secondsLeft)})`,
+				);
+			};
+			// The engine reports rarely; tick so the estimate keeps moving between reports.
+			ticker = window.setInterval(render, 500);
 			const paragraphs = await runSidecar({
 				binary: paths.sidecar,
 				args,
 				pcm,
 				signal: controller.signal,
 				spawn: (cmd, a) => spawn(cmd, a, { stdio: ["pipe", "pipe", "pipe"] }) as unknown as ChildLike,
-				onProgress: (p) =>
-					notice.setText(
-						p.stage === "loading" ? "Loading model…" : `Transcribing… ${Math.round(p.percent)}%`,
-					),
+				onProgress: (p) => {
+					if (p.stage === "loading") {
+						notice.setText("Loading model…");
+						return;
+					}
+					transcribing = true;
+					estimator.report(p.percent, Date.now());
+					render();
+				},
 			});
+			const elapsed = estimator.elapsedSeconds;
+			if (elapsed !== null && audioSeconds > 0) this.secondsPerAudioSecond = elapsed / audioSeconds;
 			if (paragraphs.every((p) => p.trim() === "")) {
 				new Notice("No speech was found in the recording.");
 				return;
@@ -87,6 +114,7 @@ export class TranscribeFlow {
 			if (e instanceof TranscriptionCancelled) new Notice("Transcription cancelled.");
 			else new Notice(`Transcription failed: ${e instanceof Error ? e.message : String(e)}`, 10000);
 		} finally {
+			if (ticker !== null) window.clearInterval(ticker);
 			progress?.hide();
 			this.controller = null;
 		}
