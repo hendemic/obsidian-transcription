@@ -1,0 +1,13 @@
+[package]
+name = "transcribe-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "transcribe-cli"
+path = "src/main.rs"
+
+[dependencies]
+transcribe-core.workspace = true
+engine-whispercpp.workspace = true
