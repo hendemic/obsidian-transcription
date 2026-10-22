@@ -49,10 +49,10 @@ npm run build
 
 ## Releasing
 
-The sidecar is downloaded from the GitHub release tagged `v<manifest version>`, so plugin and sidecar versions move together.
+The sidecar is downloaded from the GitHub release tagged `<manifest version>`, so plugin and sidecar versions move together. Tags are bare versions (`0.1.2`, no "v"), as Obsidian requires; this overrides the harness's `vX.Y.Z` tag format. `v0.1.0` and `v0.1.1` predate this and stay as they are.
 
 1. Bump the version in `plugin/manifest.json`, add it to `plugin/versions.json`, and set `[workspace.package] version` in `sidecar/Cargo.toml` (update `Cargo.lock`, and `plugin/package.json` via `npm version` if used).
-2. Commit, then tag `vX.Y.Z` and push the tag.
+2. Commit, then tag `X.Y.Z` and push the tag.
 3. `.github/workflows/release.yml` checks tag == manifest == Cargo version, builds the three sidecars (macOS arm64, Linux Vulkan, Linux CPU), builds the plugin, and creates a **draft** release with the binaries, `SHA256SUMS`, `main.js`, `manifest.json` and `styles.css`. Review and publish it by hand.
 
 GPU builds (metal/coreml/cuda/vulkan) are only verified by that CI run and on user hardware; they are not built or tested in the dev VM.
