@@ -8,6 +8,15 @@ license.workspace = true
 name = "transcribe-cli"
 path = "src/main.rs"
 
+[features]
+# Backend selection, forwarded to the engine. No feature = CPU.
+metal = ["engine-whispercpp/metal"]
+coreml = ["engine-whispercpp/coreml"]
+cuda = ["engine-whispercpp/cuda"]
+vulkan = ["engine-whispercpp/vulkan"]
+
 [dependencies]
 transcribe-core.workspace = true
 engine-whispercpp.workspace = true
+clap.workspace = true
+thiserror.workspace = true

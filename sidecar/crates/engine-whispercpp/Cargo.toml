@@ -4,5 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# No feature = CPU build. GPU backends are chosen at compile time.
+metal = ["whisper-rs/metal"]
+coreml = ["whisper-rs/coreml"]
+cuda = ["whisper-rs/cuda"]
+vulkan = ["whisper-rs/vulkan"]
+
 [dependencies]
 transcribe-core.workspace = true
+thiserror.workspace = true
+log.workspace = true
+whisper-rs.workspace = true
