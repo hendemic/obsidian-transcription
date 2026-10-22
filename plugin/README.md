@@ -23,6 +23,8 @@ Supported audio formats are whatever Obsidian's built-in player decodes: m4a, mp
 | Sidecar path override | Use your own `transcribe-cli` binary instead of the downloaded one (for development). |
 | Models and engine | Shows what is downloaded and lets you download what is missing. |
 
+**CUDA requirements:** the CUDA build needs an NVIDIA driver 550 or newer **and** the CUDA 12 runtime libraries (`libcudart` and `libcublas`, from the CUDA toolkit or your distro's CUDA runtime packages). If you only have the driver installed, choose **Vulkan**, which also runs on NVIDIA GPUs and needs no extra install.
+
 ## Downloads (network use disclosure)
 
 The plugin does nothing on the network until you click **Download** in its settings, or confirm the prompt shown the first time you use **Transcribe** with files missing. Every download is verified against a SHA-256 checksum before it is used; a file that does not match is deleted.
