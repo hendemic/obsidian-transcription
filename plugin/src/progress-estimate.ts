@@ -74,13 +74,12 @@ export class ProgressEstimator {
 
 export function formatTimeLeft(seconds: number | null): string {
 	if (seconds === null) return "estimating time left";
-	if (seconds < 5) return "almost done";
-	if (seconds < 60) return `about ${Math.ceil(seconds / 5) * 5} s left`;
-	if (seconds < 300) {
-		const rounded = Math.round(seconds / 10) * 10;
-		const min = Math.floor(rounded / 60);
-		const sec = rounded % 60;
-		return sec === 0 ? `about ${min} min left` : `about ${min} min ${sec} s left`;
-	}
-	return `about ${Math.round(seconds / 60)} min left`;
+	if (seconds < 1) return "almost done";
+	// Finer steps as the end nears; rounded up so it never claims less time than estimated.
+	const step = seconds < 15 ? 1 : seconds < 60 ? 5 : seconds < 300 ? 10 : 30;
+	const rounded = Math.ceil(seconds / step) * step;
+	const min = Math.floor(rounded / 60);
+	const sec = rounded % 60;
+	const text = min === 0 ? `${sec} s` : sec === 0 ? `${min} min` : `${min} min ${sec} s`;
+	return `about ${text} left`;
 }

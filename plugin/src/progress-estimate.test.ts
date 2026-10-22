@@ -82,14 +82,16 @@ describe("ProgressEstimator", () => {
 describe("formatTimeLeft", () => {
 	it.each([
 		[null, "estimating time left"],
-		[3, "almost done"],
-		[7, "about 10 s left"],
-		[12, "about 15 s left"],
+		[0.5, "almost done"],
+		[7.2, "about 8 s left"],
+		[14, "about 14 s left"],
+		[16, "about 20 s left"],
 		[45, "about 45 s left"],
 		[90, "about 1 min 30 s left"],
 		[118, "about 2 min left"],
 		[125, "about 2 min 10 s left"],
-		[600, "about 10 min left"],
+		[400, "about 7 min left"],
+		[430, "about 7 min 30 s left"],
 	])("formats %j as %j", (seconds, text) => {
 		expect(formatTimeLeft(seconds)).toBe(text);
 	});
