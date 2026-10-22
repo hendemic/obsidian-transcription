@@ -395,7 +395,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "embed-onnx"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "ort",
  "thiserror",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "engine-whispercpp"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "log",
  "thiserror",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "transcribe-cli"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "clap",
  "embed-onnx",
@@ -1296,7 +1296,7 @@ dependencies = [
 
 [[package]]
 name = "transcribe-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "log",
  "serde",
