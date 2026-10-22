@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/transcribe-core",
+    "crates/engine-whispercpp",
+    "crates/embed-onnx",
+    "crates/transcribe-cli",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+transcribe-core = { path = "crates/transcribe-core" }
+engine-whispercpp = { path = "crates/engine-whispercpp" }
+embed-onnx = { path = "crates/embed-onnx" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+log = "0.4"
+whisper-rs = { version = "0.16", features = ["log_backend"] }
+# ONNX Runtime for the paragraph model. Prebuilt ONNX Runtime libraries are
+# downloaded at build time; CPU execution only.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native", "api-31"] }
+# Pure-Rust regex (fancy-regex) instead of the default oniguruma C library.
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }

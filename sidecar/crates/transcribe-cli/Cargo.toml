@@ -1,0 +1,26 @@
+[package]
+name = "transcribe-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "transcribe-cli"
+path = "src/main.rs"
+
+[features]
+# Backend selection, forwarded to the engine. No feature = CPU.
+metal = ["engine-whispercpp/metal"]
+coreml = ["engine-whispercpp/coreml"]
+cuda = ["engine-whispercpp/cuda"]
+vulkan = ["engine-whispercpp/vulkan"]
+
+[dependencies]
+transcribe-core.workspace = true
+engine-whispercpp.workspace = true
+embed-onnx.workspace = true
+clap.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

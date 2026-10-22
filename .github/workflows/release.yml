@@ -1,0 +1,169 @@
+name: Release
+
+# Push a tag `vX.Y.Z` that matches plugin/manifest.json and the sidecar workspace version.
+# Creates a DRAFT release; review and publish it by hand.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag, manifest.json and Cargo workspace versions must agree
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          manifest=$(jq -r .version plugin/manifest.json)
+          cargo=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' sidecar/Cargo.toml)
+          echo "tag=$TAG manifest=$manifest cargo=$cargo"
+          [ -n "$manifest" ] && [ -n "$cargo" ] || { echo "could not read versions"; exit 1; }
+          [ "$TAG" = "v$manifest" ] || { echo "tag $TAG != v$manifest (plugin/manifest.json)"; exit 1; }
+          [ "$cargo" = "$manifest" ] || { echo "sidecar/Cargo.toml version $cargo != manifest $manifest"; exit 1; }
+          jq -e --arg v "$manifest" 'has($v)' plugin/versions.json >/dev/null \
+            || { echo "plugin/versions.json has no entry for $manifest"; exit 1; }
+
+  sidecar:
+    needs: version-check
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - asset: transcribe-cli-macos-arm64
+            # Apple Silicon runner.
+            os: macos-14
+            features: metal,coreml
+          - asset: transcribe-cli-linux-x64-cuda
+            # Linux builds use ubuntu-22.04 (glibc 2.35) so the binaries run on common current distros.
+            # Targets CUDA 12.4. The binary links the CUDA runtime/cuBLAS dynamically, so users need
+            # an NVIDIA driver compatible with CUDA 12.4 (550+) and the CUDA 12 runtime libraries installed.
+            # Nothing from the CUDA toolkit is bundled into the binary or the release.
+            os: ubuntu-22.04
+            features: cuda
+          - asset: transcribe-cli-linux-x64-vulkan
+            os: ubuntu-22.04
+            features: vulkan
+          - asset: transcribe-cli-linux-x64-cpu
+            os: ubuntu-22.04
+            features: ""
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sidecar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
+
+      - name: Install CUDA toolkit 12.4
+        if: matrix.asset == 'transcribe-cli-linux-x64-cuda'
+        run: |
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y cuda-nvcc-12-4 cuda-cudart-dev-12-4 libcublas-dev-12-4
+          echo "/usr/local/cuda-12.4/bin" >> "$GITHUB_PATH"
+          echo "CUDA_PATH=/usr/local/cuda-12.4" >> "$GITHUB_ENV"
+          # Common GPU generations only (Turing to Ada); keeps build time down.
+          echo "CMAKE_CUDA_ARCHITECTURES=75;80;86;89" >> "$GITHUB_ENV"
+
+      - name: Install Vulkan headers and glslc
+        if: matrix.asset == 'transcribe-cli-linux-x64-vulkan'
+        run: sudo apt-get install -y libvulkan-dev glslc
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sidecar
+          key: ${{ matrix.asset }}
+
+      - name: Build
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          if [ -n "$FEATURES" ]; then
+            cargo build --release --locked -p transcribe-cli --features "$FEATURES"
+          else
+            cargo build --release --locked -p transcribe-cli
+          fi
+
+      - name: Rename binary
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          mkdir -p ../dist
+          cp target/release/transcribe-cli "../dist/$ASSET"
+          chmod +x "../dist/$ASSET"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  plugin:
+    needs: version-check
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Check build outputs
+        run: test -s main.js && test -s manifest.json && test -s styles.css
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: |
+            plugin/main.js
+            plugin/manifest.json
+            plugin/styles.css
+          if-no-files-found: error
+
+  release:
+    needs: [sidecar, plugin]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate SHA256SUMS
+        working-directory: artifacts
+        run: |
+          ls -l
+          # Format "<hex>  <filename>", read by the plugin at download time.
+          sha256sum transcribe-cli-macos-arm64 transcribe-cli-linux-x64-cuda \
+            transcribe-cli-linux-x64-vulkan transcribe-cli-linux-x64-cpu > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        working-directory: artifacts
+        run: |
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes \
+            transcribe-cli-macos-arm64 transcribe-cli-linux-x64-cuda \
+            transcribe-cli-linux-x64-vulkan transcribe-cli-linux-x64-cpu \
+            SHA256SUMS main.js manifest.json styles.css
