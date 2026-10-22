@@ -6,7 +6,7 @@ Desktop only: macOS (Apple Silicon) and Linux (x64).
 
 ## Use
 
-Right-click an audio embed in a note, or an audio file in the file explorer, and choose **Transcribe**. The first time, the plugin asks to download what it needs (about 4.5 GB on macOS, 3.3 GB on Linux).
+Right-click an audio embed in a note, or an audio file in the file explorer, and choose **Transcribe**. The first time, the plugin asks to download what it needs (about 350 MB).
 
 ## Settings
 
@@ -20,8 +20,8 @@ Nothing is downloaded until you confirm. Every file is checked against a SHA-256
 
 | File | Source | Size |
 | --- | --- | --- |
-| Whisper large-v3 model | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 3.1 GB |
-| Core ML encoder (macOS only) | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 1.2 GB |
+| Whisper base model | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 148 MB |
+| Core ML encoder (macOS only) | [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | 38 MB |
 | Paragraph model and tokenizer | [sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2) | 127 MB |
 | Voice detection model | [ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad) | 1 MB |
 | Transcription engine | [this repo's releases](https://github.com/hendemic/obsidian-transcription/releases) | 35 MB |

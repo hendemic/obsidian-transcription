@@ -1,6 +1,6 @@
 # Plan: local Whisper transcription for Obsidian
 
-An Obsidian plugin that adds **Transcribe** to the right-click menu of an embedded audio recording. It transcribes the audio locally with Whisper large-v3 on the GPU and inserts the transcript as plain text, broken into paragraphs at natural pauses, under the embed. Primary use: spoken journal entries, where accuracy matters more than speed.
+An Obsidian plugin that adds **Transcribe** to the right-click menu of an embedded audio recording. It transcribes the audio locally with Whisper on the GPU and inserts the transcript as plain text, broken into paragraphs at natural pauses, under the embed. Primary use: spoken journal entries, where accuracy matters more than speed.
 
 ## Scope
 
@@ -92,8 +92,8 @@ pub struct PauseGap { pub min_gap: Duration }
 
 - `WhisperCpp::new(model_path, config)` loads the model once; `impl Transcriber`.
 - Cargo features passed through to whisper-rs: `metal`, `coreml`, `cuda`, `vulkan`. No feature = CPU (used for development and CI tests).
-- Model: **ggml large-v3 at f16 or q8_0** (not turbo, not q5, since accuracy matters more than speed here).
-- macOS: Metal plus the Core ML encoder (`ggml-large-v3-encoder.mlmodelc`, next to the model file) so the encoder runs on the Neural Engine.
+- Model: **ggml base** (148 MB) for 0.1.0, the model it was tested with. large-v3 (f16 or q8_0) remains the target for accuracy; switching is a change to `plugin/src/assets/config.ts`.
+- macOS: Metal plus the Core ML encoder (`<model stem>-encoder.mlmodelc`, next to the model file) so the encoder runs on the Neural Engine.
 - **Silero VAD on by default** (whisper.cpp's built-in VAD with the ggml Silero model). large-v3 hallucinates and repeats during silence, and journal recordings have pauses.
 - Pass `initial_prompt` and `language` through. Map whisper.cpp's progress callback to `Progress::Transcribing`.
 - Token timestamps on: each segment's tokens become `Word`s (special tokens dropped, tokens merged where a character is split across them), and the gaps between VAD speech spans become `Silence`s.
@@ -131,7 +131,7 @@ The Core ML encoder is found by whisper.cpp next to the model, so it needs no fl
 - **Settings:** language (auto by default), initial prompt, pause gap (seconds), Linux backend (auto / cuda / vulkan / cpu), sidecar path override (for development), and model status with a download button.
 - **Asset manager:**
   - Data directory outside the vault so 3 GB models don't sync: `~/Library/Application Support/<plugin-id>/` on macOS, `$XDG_DATA_HOME/<plugin-id>/` (default `~/.local/share`) on Linux.
-  - Downloads, with progress and SHA-256 verification: the large-v3 ggml model, the Silero VAD model and the paragraph model (int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2, with its tokenizer.json) from Hugging Face; on macOS also the Core ML encoder (zip, extracted); the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
+  - Downloads, with progress and SHA-256 verification: the Whisper ggml model, the Silero VAD model and the paragraph model (int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2, with its tokenizer.json) from Hugging Face; on macOS also the Core ML encoder (zip, extracted); the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
   - Linux backend "auto": `nvidia-smi` present → cuda, otherwise vulkan.
   - Downloads happen only after the user clicks download in settings or confirms a prompt on first use. The plugin README discloses them (required by Obsidian's community plugin rules).
 - **Plugin id:** Obsidian disallows "obsidian" in plugin ids. Working name: **Local Whisper Transcribe** (`local-whisper-transcribe`).

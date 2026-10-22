@@ -18,11 +18,11 @@ export interface FileAssetConfig {
 }
 
 export const MODEL: FileAssetConfig = {
-	label: "Whisper large-v3 model",
-	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-	fileName: "ggml-large-v3.bin",
-	sizeBytes: 3_095_033_483,
-	sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+	label: "Whisper base model",
+	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+	fileName: "ggml-base.bin",
+	sizeBytes: 147_951_465,
+	sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
 };
 
 export const VAD_MODEL: FileAssetConfig = {
@@ -58,11 +58,11 @@ export const PARAGRAPH_TOKENIZER: FileAssetConfig = {
 /** macOS only. Extracted next to the model; whisper.cpp finds it by name. */
 export const COREML_ENCODER: FileAssetConfig & { extractedDirName: string } = {
 	label: "Core ML encoder (Apple Neural Engine)",
-	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-encoder.mlmodelc.zip",
-	fileName: "ggml-large-v3-encoder.mlmodelc.zip",
-	extractedDirName: "ggml-large-v3-encoder.mlmodelc",
-	sizeBytes: 1_175_711_232,
-	sha256: "47837be7594a29429ec08620043390c4d6d467f8bd362df09e9390ace76a55a4",
+	url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-encoder.mlmodelc.zip",
+	fileName: "ggml-base-encoder.mlmodelc.zip",
+	extractedDirName: "ggml-base-encoder.mlmodelc",
+	sizeBytes: 37_922_638,
+	sha256: "7e6ab77041942572f239b5b602f8aaa1c3ed29d73e3d8f20abea03a773541089",
 };
 
 export type SidecarVariant = "macos-arm64" | "linux-x64-cuda" | "linux-x64-vulkan" | "linux-x64-cpu";

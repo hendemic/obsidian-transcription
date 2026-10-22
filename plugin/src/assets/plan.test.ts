@@ -236,7 +236,7 @@ describe("buildAssetPlan", () => {
 
 	it("places the Core ML encoder next to the model, extracted from a zip", () => {
 		const coreml = findAsset(buildAssetPlan(mac), "coreml");
-		expect(coreml?.dest).toBe("/d/models/ggml-large-v3-encoder.mlmodelc");
+		expect(coreml?.dest).toBe("/d/models/ggml-base-encoder.mlmodelc");
 		expect(coreml?.archivePath).toBe(`/d/models/${COREML_ENCODER.fileName}`);
 		// whisper.cpp looks for `<model stem>-encoder.mlmodelc` next to the model file.
 		const model = findAsset(buildAssetPlan(mac), "model");
