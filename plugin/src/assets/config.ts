@@ -1,5 +1,5 @@
 // Single source of truth for everything the plugin downloads.
-// Keep this in sync with the "Downloads and privacy" section of plugin/README.md.
+// Keep this in sync with the "Downloads and privacy" section of README.md.
 
 export const PLUGIN_ID = "local-whisper-transcribe";
 
