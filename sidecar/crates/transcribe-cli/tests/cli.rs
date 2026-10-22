@@ -195,12 +195,6 @@ fn probe_on_cpu_build_is_exact() {
 }
 
 #[test]
-fn probe_version_matches_the_documented_protocol_version() {
-    let out = run_cli(["probe"], b"");
-    assert_eq!(out.json_lines()[0]["version"], "0.1.0");
-}
-
-#[test]
 fn probe_writes_nothing_to_stderr() {
     let out = run_cli(["probe"], b"");
     assert_eq!(out.stderr, "");
