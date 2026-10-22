@@ -19,7 +19,7 @@ Supported audio formats are whatever Obsidian's built-in player decodes: m4a, mp
 | Language | `auto` (default) or a code such as `en`. |
 | Initial prompt | Names or terms to bias the transcript toward. |
 | Pause gap (seconds) | A silence at least this long starts a new paragraph. Default 1.8. |
-| GPU backend (Linux only) | Auto, CUDA, Vulkan, or CPU. Auto uses CUDA if `nvidia-smi` is on your PATH, otherwise Vulkan. CPU has no download and needs a sidecar path. |
+| GPU backend (Linux only) | Auto, CUDA, Vulkan, or CPU. Auto uses CUDA if `nvidia-smi` is on your PATH, otherwise Vulkan. CPU downloads a build without GPU support, which is much slower. |
 | Sidecar path override | Use your own `transcribe-cli` binary instead of the downloaded one (for development). |
 | Models and engine | Shows what is downloaded and lets you download what is missing. |
 
@@ -32,7 +32,7 @@ The plugin does nothing on the network until you click **Download** in its setti
 | Whisper large-v3 model (`ggml-large-v3.bin`) | [Hugging Face, ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | about 3.1 GB | all |
 | Silero VAD model (`ggml-silero-v5.1.2.bin`) | [Hugging Face, ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad) | about 0.9 MB | all |
 | Core ML encoder (`ggml-large-v3-encoder.mlmodelc.zip`, extracted) | [Hugging Face, ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | about 1.2 GB | macOS only |
-| Transcription engine (`transcribe-cli-<platform>`) | [GitHub releases of hendemic/obsidian-transcription](https://github.com/hendemic/obsidian-transcription/releases), tag `v<plugin version>`, checksums from the release's `SHA256SUMS` | small | macOS arm64, Linux x64 (CUDA or Vulkan) |
+| Transcription engine (`transcribe-cli-<platform>`) | [GitHub releases of hendemic/obsidian-transcription](https://github.com/hendemic/obsidian-transcription/releases), tag `v<plugin version>`, checksums from the release's `SHA256SUMS` | small | macOS arm64, Linux x64 (CUDA, Vulkan or CPU) |
 
 Files are stored **outside your vault**, so they are not synced:
 

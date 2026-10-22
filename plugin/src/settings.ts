@@ -56,7 +56,7 @@ export class LocalWhisperSettingTab extends PluginSettingTab {
 		if (Platform.isLinux) {
 			new Setting(containerEl)
 				.setName("GPU backend")
-				.setDesc("Automatic mode picks the build that suits your GPU. The CPU option needs a sidecar path below.")
+				.setDesc("Automatic mode picks the build that suits your GPU. CPU is much slower and only needed without a usable GPU.")
 				.addDropdown((d) => {
 					for (const b of LINUX_BACKENDS) d.addOption(b, b);
 					d.setValue(settings.linuxBackend).onChange(async (v) => {
