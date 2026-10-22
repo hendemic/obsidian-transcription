@@ -15,6 +15,9 @@ pub enum Error {
         source: WhisperError,
     },
 
+    #[error("invalid model {}: {reason} (truncated or corrupt download?)", .path.display())]
+    InvalidModel { path: PathBuf, reason: String },
+
     #[error("VAD is enabled but no VAD model path was configured")]
     VadModelMissing,
 

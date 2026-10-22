@@ -38,6 +38,40 @@ impl Default for PauseGap {
     }
 }
 
+/// Zero-width and format characters that `str::trim` keeps but that render as nothing.
+const INVISIBLE: [char; 5] = ['\u{200B}', '\u{200C}', '\u{200D}', '\u{2060}', '\u{FEFF}'];
+
+/// Trims `text`, removes invisible characters from its ends, and collapses
+/// every whitespace run containing a line break to a single space so a
+/// paragraph never contains a blank line. Empty if only invisibles remain.
+fn clean_text(text: &str) -> String {
+    let text = text.trim_matches(|c: char| c.is_whitespace() || INVISIBLE.contains(&c));
+    let mut out = String::with_capacity(text.len());
+    let mut run = String::new();
+    for c in text.chars() {
+        if c.is_whitespace() {
+            run.push(c);
+            continue;
+        }
+        flush_run(&mut out, &mut run);
+        out.push(c);
+    }
+    flush_run(&mut out, &mut run);
+    if out.chars().all(|c| INVISIBLE.contains(&c)) {
+        out.clear();
+    }
+    out
+}
+
+fn flush_run(out: &mut String, run: &mut String) {
+    if run.contains(['\n', '\r']) {
+        out.push(' ');
+    } else {
+        out.push_str(run);
+    }
+    run.clear();
+}
+
 impl Paragrapher for PauseGap {
     fn paragraphs(&self, segments: &[Segment]) -> Vec<String> {
         let mut paragraphs = Vec::new();
@@ -45,7 +79,7 @@ impl Paragrapher for PauseGap {
         let mut last_end: Option<Duration> = None;
 
         for segment in segments {
-            let text = segment.text.trim();
+            let text = clean_text(&segment.text);
             if text.is_empty() {
                 continue;
             }
@@ -57,7 +91,7 @@ impl Paragrapher for PauseGap {
             if !current.is_empty() {
                 current.push(' ');
             }
-            current.push_str(text);
+            current.push_str(&text);
             last_end = Some(last_end.map_or(segment.end, |end| end.max(segment.end)));
         }
 
@@ -301,9 +335,19 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "SPEC GAP: a segment containing a blank line yields a paragraph containing a \
-                blank line, which the plugin's blank-line-separated insertion turns into two \
-                paragraphs; PauseGap only trims the ends of each segment"]
+    fn invisible_only_segments_are_treated_as_empty() {
+        let segments = [
+            seg(0, 1000, "One."),
+            seg(1000, 1500, "\u{200B}\u{FEFF} \u{2060}\u{200C}\u{200D}"),
+            seg(3000, 3500, "Two."),
+        ];
+        assert_eq!(
+            PauseGap::default().paragraphs(&segments),
+            vec!["One.", "Two."]
+        );
+    }
+
+    #[test]
     fn paragraph_never_contains_a_blank_line() {
         // The plugin inserts paragraphs separated by blank lines (docs/plan.md,
         // "Insertion"), so a blank line inside one paragraph silently splits it.

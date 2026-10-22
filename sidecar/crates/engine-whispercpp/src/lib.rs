@@ -92,6 +92,33 @@ pub struct WhisperCppConfig {
 /// for best accuracy; wider beams cost a lot more time for little gain.
 const BEAM_SIZE: i32 = 5;
 
+/// Rejects models whose hyperparameters are zero.
+///
+/// whisper.cpp accepts a file with a valid magic but no tensors ("assuming
+/// empty model for testing"), e.g. a truncated download with a zeroed header,
+/// and then throws a C++ exception during inference, which aborts the process
+/// without an error line. Checking the loaded context's dimensions through
+/// whisper-rs's accessors catches it at load time without hand-parsing the
+/// file format. Every real Whisper model has all of these above zero.
+fn check_model_dimensions(ctx: &WhisperContext) -> Result<(), String> {
+    let dimensions = [
+        ("n_vocab", ctx.model_n_vocab()),
+        ("n_audio_ctx", ctx.model_n_audio_ctx()),
+        ("n_audio_state", ctx.model_n_audio_state()),
+        ("n_audio_head", ctx.model_n_audio_head()),
+        ("n_audio_layer", ctx.model_n_audio_layer()),
+        ("n_text_ctx", ctx.model_n_text_ctx()),
+        ("n_text_state", ctx.model_n_text_state()),
+        ("n_text_head", ctx.model_n_text_head()),
+        ("n_text_layer", ctx.model_n_text_layer()),
+        ("n_mels", ctx.model_n_mels()),
+    ];
+    match dimensions.iter().find(|(_, value)| *value <= 0) {
+        Some((name, value)) => Err(format!("{name} is {value}")),
+        None => Ok(()),
+    }
+}
+
 /// A loaded whisper.cpp model.
 pub struct WhisperCpp {
     ctx: WhisperContext,
@@ -143,6 +170,11 @@ impl WhisperCpp {
                 path: model_path.to_path_buf(),
                 source,
             })?;
+
+        check_model_dimensions(&ctx).map_err(|reason| Error::InvalidModel {
+            path: model_path.to_path_buf(),
+            reason,
+        })?;
 
         let vad = match vad_path {
             None => None,

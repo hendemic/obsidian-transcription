@@ -292,9 +292,6 @@ fn unknown_flag_is_named_in_the_message() {
 }
 
 #[test]
-#[ignore = "BUG: with no subcommand the error message is clap's `about` text \
-            (\"invalid arguments: Local Whisper transcription sidecar\"), which does not \
-            say what is wrong; summarize_clap_error keeps the first line of a help-style render"]
 fn no_subcommand_error_says_a_command_is_missing() {
     let out = run_cli(Vec::<&str>::new(), b"");
     let message = out.assert_protocol_error();
@@ -305,9 +302,6 @@ fn no_subcommand_error_says_a_command_is_missing() {
 }
 
 #[test]
-#[ignore = "BUG: summarize_clap_error stops only at \"Usage:\", so errors rendered without a \
-            usage block keep clap's \"For more information, try '--help'.\" hint in the \
-            JSON message (e.g. `transcribe --model` with no value), contrary to its doc comment"]
 fn arg_error_messages_contain_no_help_hint() {
     for args in arg_error_cases() {
         let out = run_cli(&args, b"");
@@ -460,9 +454,6 @@ fn truncated_ggml_model(name: &str) -> PathBuf {
 }
 
 #[test]
-#[ignore = "BUG: whisper.cpp accepts a ggml header with no tensors (\"assuming empty model \
-            for testing\") and the sidecar reports success: exit 0 with an empty result, so a \
-            truncated model silently yields an empty transcript"]
 fn truncated_model_with_short_audio_is_an_error() {
     let model = truncated_ggml_model("truncated-short.bin");
     let out = run_cli(
@@ -477,9 +468,6 @@ fn truncated_model_with_short_audio_is_an_error() {
 }
 
 #[test]
-#[ignore = "BUG: with a truncated (tensor-less) ggml model and >= 100 ms of audio, inference \
-            throws a C++ exception and the process aborts (SIGABRT, \"Rust cannot catch \
-            foreign exceptions\") with no error line on stdout"]
 fn truncated_model_with_one_second_of_audio_is_an_error_not_an_abort() {
     let model = truncated_ggml_model("truncated-1s.bin");
     let out = run_cli(
