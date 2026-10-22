@@ -128,24 +128,24 @@ The Core ML encoder is found by whisper.cpp next to the model, so it needs no fl
 - **Decoding:** read the file with `vault.readBinary`, `AudioContext.decodeAudioData`, then render through a 16 kHz mono `OfflineAudioContext` to get `Float32Array` PCM.
 - **Run:** spawn the sidecar with `child_process.spawn`, stream PCM to stdin, parse stdout line by line, show progress in a `Notice` with a Cancel button. Allow only one transcription at a time.
 - **Insertion:** with `vault.process`, insert the paragraphs (separated by blank lines, plain text, no callout or heading) on the lines after the embed that was clicked. If the clicked embed can't be mapped to a line, use the first occurrence of that embed in the note. From the file explorer, create `<audio name> transcript.md` in the same folder, embedding the audio followed by the transcript.
-- **Settings:** language (auto by default), initial prompt, pause gap (seconds), Linux backend (auto / cuda / vulkan / cpu), sidecar path override (for development), and model status with a download button.
+- **Settings:** language (auto by default), initial prompt, pause gap (seconds), Linux backend (vulkan / cpu), sidecar path override (for development), and model status with a download button.
 - **Asset manager:**
   - Data directory outside the vault so 3 GB models don't sync: `~/Library/Application Support/<plugin-id>/` on macOS, `$XDG_DATA_HOME/<plugin-id>/` (default `~/.local/share`) on Linux.
   - Downloads, with progress and SHA-256 verification: the Whisper ggml model, the Silero VAD model and the paragraph model (int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2, with its tokenizer.json) from Hugging Face; on macOS also the Core ML encoder (zip, extracted); the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
-  - Linux backend "auto": `nvidia-smi` present → cuda, otherwise vulkan.
+  - Linux uses the Vulkan build (AMD, NVIDIA and Intel GPUs) unless the user picks CPU. There is no CUDA or ROCm build: Vulkan needs no extra runtime install and treats all vendors the same.
   - Downloads happen only after the user clicks download in settings or confirms a prompt on first use. The plugin README discloses them (required by Obsidian's community plugin rules).
 - **Plugin id:** Obsidian disallows "obsidian" in plugin ids. Working name: **Local Whisper Transcribe** (`local-whisper-transcribe`).
 
 ### CI and releases
 
 - CI on push: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (CPU build); plugin typecheck, lint, test, build.
-- Release workflow on tag `v*`: build `transcribe-cli` for `macos-arm64` (`metal,coreml`), `linux-x64-cuda`, `linux-x64-vulkan`; attach them with SHA-256 sums, plus `main.js`, `manifest.json` and `styles.css`, to the GitHub release.
+- Release workflow on tag `v*`: build `transcribe-cli` for `macos-arm64` (`metal,coreml`), `linux-x64-vulkan`, `linux-x64-cpu` (built on Ubuntu 24.04, so glibc 2.39+); attach them with SHA-256 sums, plus `main.js`, `manifest.json` and `styles.css`, to the GitHub release.
 
 ### Testing
 
 - Rust unit tests: `PauseGap` (gap thresholds, empty segments, whitespace), protocol serialization, `run()` with a fake `Transcriber` (progress, result and error paths), PCM reading from stdin (partial reads, odd byte counts).
 - Rust integration test, marked slow/ignored by default: CPU build, `ggml-tiny.en` model, short committed WAV fixture, checks that the expected words appear.
-- Plugin unit tests (vitest): embed detection from DOM and from link text, insertion of paragraphs after the right line, protocol line parsing, backend auto-detection logic.
+- Plugin unit tests (vitest): embed detection from DOM and from link text, insertion of paragraphs after the right line, protocol line parsing, release variant selection.
 - Manual (user-only): GPU builds on macOS and on a Linux machine with an NVIDIA or AMD GPU. The development VM has no GPU, so agents skip GPU and real-model tests there (see `## Harness: user-only checks` in `CLAUDE.md`).
 
 ## Work items

@@ -1,8 +1,7 @@
-// Asset planning: data directory, Linux backend auto-detection, release variants, missing assets
+// Asset planning: data directory, release variants, missing assets
 // (docs/plan.md, "Plugin" > "Asset manager").
 //
 // Deliberately not covered:
-// - Running `nvidia-smi` (manager.ts, needs the real binary); resolveLinuxBackend gets its result as input.
 // - Downloads, extraction and chmod (download.ts / manager.ts): network and filesystem side effects.
 import { describe, expect, it } from "vitest";
 import {
@@ -17,72 +16,12 @@ import {
 import {
 	buildAssetPlan,
 	findAsset,
-	isCudaUsable,
 	missingAssets,
 	parseSha256Sums,
 	resolveDataDir,
-	resolveLinuxBackend,
 	sidecarVariant,
 	type PlanInput,
 } from "./plan";
-
-describe("isCudaUsable", () => {
-	const both = [
-		"\tlibcudart.so.12 (libc6,x86-64) => /usr/local/cuda/lib64/libcudart.so.12",
-		"\tlibcublas.so.12 (libc6,x86-64) => /usr/local/cuda/lib64/libcublas.so.12",
-	].join("\n");
-
-	it("is true with nvidia-smi and both CUDA 12 libs", () => {
-		expect(isCudaUsable(true, both)).toBe(true);
-	});
-
-	it("is false without nvidia-smi even when the libs exist", () => {
-		expect(isCudaUsable(false, both)).toBe(false);
-	});
-
-	it("is false when ldconfig output is unavailable", () => {
-		expect(isCudaUsable(true, null)).toBe(false);
-	});
-
-	it("is false when libcublas is missing", () => {
-		expect(isCudaUsable(true, "\tlibcudart.so.12 (libc6,x86-64) => /x/libcudart.so.12")).toBe(false);
-	});
-
-	it("is false when libcudart is missing", () => {
-		expect(isCudaUsable(true, "\tlibcublas.so.12 (libc6,x86-64) => /x/libcublas.so.12")).toBe(false);
-	});
-
-	it("rejects other CUDA major versions", () => {
-		const v11 = "\tlibcudart.so.11.0 (libc6,x86-64) => /x\n\tlibcublas.so.11 (libc6,x86-64) => /y";
-		expect(isCudaUsable(true, v11)).toBe(false);
-	});
-});
-
-describe("resolveLinuxBackend", () => {
-	it("auto picks cuda when CUDA is usable", () => {
-		expect(resolveLinuxBackend("auto", true)).toBe("cuda");
-	});
-
-	it("auto picks vulkan when CUDA is not usable", () => {
-		expect(resolveLinuxBackend("auto", false)).toBe("vulkan");
-	});
-
-	it("auto never picks cpu", () => {
-		expect(resolveLinuxBackend("auto", false)).not.toBe("cpu");
-		expect(resolveLinuxBackend("auto", true)).not.toBe("cpu");
-	});
-
-	it.each([
-		["cuda", false],
-		["cuda", true],
-		["vulkan", true],
-		["vulkan", false],
-		["cpu", true],
-		["cpu", false],
-	] as const)("explicit %s is kept regardless of nvidia-smi (%s)", (setting, nv) => {
-		expect(resolveLinuxBackend(setting, nv)).toBe(setting);
-	});
-});
 
 describe("resolveDataDir", () => {
 	it("uses Application Support on macOS", () => {
@@ -158,15 +97,14 @@ describe("resolveDataDir", () => {
 describe("sidecarVariant", () => {
 	it("maps macOS arm64 to the macos-arm64 build, whatever the backend", () => {
 		expect(sidecarVariant("darwin", "arm64", "vulkan")).toBe("macos-arm64");
-		expect(sidecarVariant("darwin", "arm64", "cuda")).toBe("macos-arm64");
+		expect(sidecarVariant("darwin", "arm64", "cpu")).toBe("macos-arm64");
 	});
 
 	it("has no build for Intel Macs", () => {
 		expect(sidecarVariant("darwin", "x64", "vulkan")).toBeNull();
 	});
 
-	it("maps Linux x64 cuda and vulkan", () => {
-		expect(sidecarVariant("linux", "x64", "cuda")).toBe("linux-x64-cuda");
+	it("maps Linux x64 vulkan to the Vulkan build", () => {
 		expect(sidecarVariant("linux", "x64", "vulkan")).toBe("linux-x64-vulkan");
 	});
 
@@ -181,7 +119,7 @@ describe("sidecarVariant", () => {
 
 	it("has no build for Linux arm64 or Windows", () => {
 		expect(sidecarVariant("linux", "arm64", "vulkan")).toBeNull();
-		expect(sidecarVariant("win32", "x64", "cuda")).toBeNull();
+		expect(sidecarVariant("win32", "x64", "vulkan")).toBeNull();
 	});
 });
 
@@ -244,8 +182,8 @@ describe("buildAssetPlan", () => {
 	});
 
 	it("plans the sidecar for the resolved Linux backend", () => {
-		expect(findAsset(buildAssetPlan({ ...linux, backend: "cuda" }), "sidecar")?.releaseAssetName).toBe(
-			SIDECAR_ASSET_NAMES["linux-x64-cuda"],
+		expect(findAsset(buildAssetPlan({ ...linux, backend: "cpu" }), "sidecar")?.releaseAssetName).toBe(
+			SIDECAR_ASSET_NAMES["linux-x64-cpu"],
 		);
 		expect(findAsset(buildAssetPlan(linux), "sidecar")?.releaseAssetName).toBe(
 			SIDECAR_ASSET_NAMES["linux-x64-vulkan"],
@@ -295,10 +233,10 @@ describe("buildAssetPlan", () => {
 	});
 
 	it("gives each Linux backend a different sidecar destination", () => {
-		const dests = (["cuda", "vulkan", "cpu"] as const).map(
+		const dests = (["vulkan", "cpu"] as const).map(
 			(backend) => findAsset(buildAssetPlan({ ...linux, backend }), "sidecar")?.dest,
 		);
-		expect(new Set(dests).size).toBe(3);
+		expect(new Set(dests).size).toBe(2);
 	});
 
 	it("refuses an unsupported arch with the cpu backend too", () => {
@@ -327,7 +265,7 @@ describe("missingAssets", () => {
 	const linuxPlan = buildAssetPlan({
 		platform: "linux",
 		arch: "x64",
-		backend: "cuda",
+		backend: "vulkan",
 		dataDir: "/d",
 		pluginVersion: "0.1.0",
 		sidecarOverridden: false,

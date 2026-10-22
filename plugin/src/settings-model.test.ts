@@ -1,6 +1,6 @@
 // Settings defaults and merging of stored data (docs/plan.md, "Plugin" > "Settings").
 // Spec: language (auto by default), initial prompt, pause gap (seconds, default 1.8), Linux backend
-// (auto / cuda / vulkan / cpu), sidecar path override.
+// (vulkan / cpu), sidecar path override.
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, LINUX_BACKENDS, mergeSettings } from "./settings-model";
 
@@ -10,13 +10,13 @@ describe("DEFAULT_SETTINGS", () => {
 			language: "auto",
 			initialPrompt: "",
 			pauseGapSeconds: 1.8,
-			linuxBackend: "auto",
+			linuxBackend: "vulkan",
 			sidecarPath: "",
 		});
 	});
 
-	it("offers exactly the four Linux backends", () => {
-		expect([...LINUX_BACKENDS].sort()).toEqual(["auto", "cpu", "cuda", "vulkan"]);
+	it("offers exactly the Vulkan and CPU Linux backends", () => {
+		expect([...LINUX_BACKENDS].sort()).toEqual(["cpu", "vulkan"]);
 	});
 });
 
@@ -47,7 +47,7 @@ describe("mergeSettings", () => {
 			language: "de",
 			initialPrompt: "Anke, Jörg",
 			pauseGapSeconds: 2.5,
-			linuxBackend: "cuda",
+			linuxBackend: "cpu",
 			sidecarPath: "/opt/transcribe-cli",
 		};
 		expect(mergeSettings(stored)).toEqual(stored);
@@ -112,7 +112,11 @@ describe("mergeSettings", () => {
 		});
 
 		it.each(["CUDA", "rocm", "metal", "", " cuda"])("rejects %j", (linuxBackend) => {
-			expect(mergeSettings({ linuxBackend }).linuxBackend).toBe("auto");
+			expect(mergeSettings({ linuxBackend }).linuxBackend).toBe("vulkan");
+		});
+
+		it.each(["auto", "cuda"])("moves the removed %j setting to Vulkan", (linuxBackend) => {
+			expect(mergeSettings({ linuxBackend }).linuxBackend).toBe("vulkan");
 		});
 	});
 
@@ -134,7 +138,7 @@ describe("mergeSettings", () => {
 	});
 
 	it("ignores values inherited through the prototype", () => {
-		const proto = { language: "xx", linuxBackend: "cuda" };
+		const proto = { language: "xx", linuxBackend: "cpu" };
 		const stored = Object.create(proto) as object;
 		const merged = mergeSettings(JSON.parse(JSON.stringify(stored)));
 		expect(merged).toEqual(DEFAULT_SETTINGS);

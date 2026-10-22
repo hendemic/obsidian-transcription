@@ -5,6 +5,8 @@ import { formatBytes } from "./ui";
 import { clampPauseGapSeconds } from "./protocol";
 import { LINUX_BACKENDS, type LinuxBackend } from "./settings-model";
 
+const BACKEND_LABELS: Record<LinuxBackend, string> = { vulkan: "GPU (Vulkan)", cpu: "CPU" };
+
 export class LocalWhisperSettingTab extends PluginSettingTab {
 	private statusEl: HTMLElement | null = null;
 	private progressText = "";
@@ -57,9 +59,9 @@ export class LocalWhisperSettingTab extends PluginSettingTab {
 		if (Platform.isLinux) {
 			new Setting(containerEl)
 				.setName("GPU backend")
-				.setDesc("Automatic mode uses the NVIDIA (CUDA) build only when its runtime libraries are installed, otherwise the generic GPU build. CPU is much slower and only needed without a usable GPU.")
+				.setDesc("GPU works with AMD, NVIDIA and Intel graphics through Vulkan. CPU is much slower and only needed without a usable GPU.")
 				.addDropdown((d) => {
-					for (const b of LINUX_BACKENDS) d.addOption(b, b);
+					for (const b of LINUX_BACKENDS) d.addOption(b, BACKEND_LABELS[b]);
 					d.setValue(settings.linuxBackend).onChange(async (v) => {
 						settings.linuxBackend = v as LinuxBackend;
 						await this.plugin.saveSettings();
