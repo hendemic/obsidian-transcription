@@ -1,0 +1,3 @@
+comments rule .claude/rules/conventions/comments.md 6092e56a67aad6dd2cb41d699bee9e70155ef9d0ebf593226d70394481a1525c b7f3fb6
+rust rule .claude/rules/conventions/rust.md 9d0692ca57ee34286f3f74feafbf30f83c49d5d322f4bd5e3d810012ea7fdd08 b7f3fb6
+typescript rule .claude/rules/conventions/typescript.md aa5d2869535abb7abd05f7da6f71f3a04ceb0e9dfd2ab6059efbd30847bb9d3f b7f3fb6
