@@ -92,8 +92,8 @@ pub struct PauseGap { pub min_gap: Duration }
 
 - `WhisperCpp::new(model_path, config)` loads the model once; `impl Transcriber`.
 - Cargo features passed through to whisper-rs: `metal`, `coreml`, `cuda`, `vulkan`. No feature = CPU (used for development and CI tests).
-- Model: **ggml base** (148 MB) for 0.1.0, the model it was tested with. large-v3 (f16 or q8_0) remains the target for accuracy; switching is a change to `plugin/src/assets/config.ts`.
-- macOS: Metal plus the Core ML encoder (`<model stem>-encoder.mlmodelc`, next to the model file) so the encoder runs on the Neural Engine.
+- Model: **large-v3-turbo q5_0** (574 MB), set in `plugin/src/assets/config.ts`. 0.1.x shipped base (148 MB), which got names and words wrong too often.
+- macOS: Metal only. The Core ML encoder for turbo is unquantized (1.2 GB), more than twice the model, so it is not used.
 - **Silero VAD on by default** (whisper.cpp's built-in VAD with the ggml Silero model). large-v3 hallucinates and repeats during silence, and journal recordings have pauses.
 - Pass `initial_prompt` and `language` through. Map whisper.cpp's progress callback to `Progress::Transcribing`.
 - Token timestamps on: each segment's tokens become `Word`s (special tokens dropped, tokens merged where a character is split across them), and the gaps between VAD speech spans become `Silence`s.
@@ -104,7 +104,7 @@ This is the contract between the plugin and the sidecar. Plugin and sidecar work
 
 ```
 transcribe-cli probe
-  → stdout: {"version":"0.1.0","backend":"metal+coreml"|"cuda"|"vulkan"|"cpu"}
+  → stdout: {"version":"0.1.0","backend":"metal"|"cuda"|"vulkan"|"cpu"}
 
 transcribe-cli transcribe --model <path> [--vad-model <path>] [--language <code>]
                           [--prompt <text>] [--pause-gap-ms <n>]
@@ -118,7 +118,7 @@ transcribe-cli transcribe --model <path> [--vad-model <path>] [--language <code>
   exit: 0 on result, 1 on error (an error line is written first when possible)
 ```
 
-The Core ML encoder is found by whisper.cpp next to the model, so it needs no flag. With the paragraph model, paragraphs break by content (`ContentGate`) and `--pause-gap-ms` only applies if the model fails to load or run, which is reported on stderr but never fails the transcription. Diagnostics go to stderr only. Cancellation is the plugin killing the process.
+With the paragraph model, paragraphs break by content (`ContentGate`) and `--pause-gap-ms` only applies if the model fails to load or run, which is reported on stderr but never fails the transcription. Diagnostics go to stderr only. Cancellation is the plugin killing the process.
 
 ### Plugin
 
@@ -130,8 +130,8 @@ The Core ML encoder is found by whisper.cpp next to the model, so it needs no fl
 - **Insertion:** with `vault.process`, insert the paragraphs (separated by blank lines, plain text, no callout or heading) on the lines after the embed that was clicked. If the clicked embed can't be mapped to a line, use the first occurrence of that embed in the note. From the file explorer, create `<audio name> transcript.md` in the same folder, embedding the audio followed by the transcript.
 - **Settings:** language (auto by default), initial prompt, pause gap (seconds), Linux backend (vulkan / cpu), sidecar path override (for development), and model status with a download button.
 - **Asset manager:**
-  - Data directory outside the vault so 3 GB models don't sync: `~/Library/Application Support/<plugin-id>/` on macOS, `$XDG_DATA_HOME/<plugin-id>/` (default `~/.local/share`) on Linux.
-  - Downloads, with progress and SHA-256 verification: the Whisper ggml model, the Silero VAD model and the paragraph model (int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2, with its tokenizer.json) from Hugging Face; on macOS also the Core ML encoder (zip, extracted); the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
+  - Data directory outside the vault so large models don't sync: `~/Library/Application Support/<plugin-id>/` on macOS, `$XDG_DATA_HOME/<plugin-id>/` (default `~/.local/share`) on Linux.
+  - Downloads, with progress and SHA-256 verification: the Whisper ggml model, the Silero VAD model and the paragraph model (int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2, with its tokenizer.json) from Hugging Face; the sidecar build for this OS/backend from this repo's GitHub releases. Mark the sidecar executable.
   - Linux uses the Vulkan build (AMD, NVIDIA and Intel GPUs) unless the user picks CPU. There is no CUDA or ROCm build: Vulkan needs no extra runtime install and treats all vendors the same.
   - Downloads happen only after the user clicks download in settings or confirms a prompt on first use. The plugin README discloses them (required by Obsidian's community plugin rules).
 - **Plugin id:** Obsidian disallows "obsidian" in plugin ids. Working name: **Local Whisper Transcribe** (`local-whisper-transcribe`).
@@ -139,7 +139,7 @@ The Core ML encoder is found by whisper.cpp next to the model, so it needs no fl
 ### CI and releases
 
 - CI on push: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (CPU build); plugin typecheck, lint, test, build.
-- Release workflow on tag `X.Y.Z` (no "v", as Obsidian requires): build `transcribe-cli` for `macos-arm64` (`metal,coreml`), `linux-x64-vulkan`, `linux-x64-cpu` (built on Ubuntu 24.04, so glibc 2.39+); attach them with SHA-256 sums, plus `main.js`, `manifest.json` and `styles.css`, to the GitHub release.
+- Release workflow on tag `X.Y.Z` (no "v", as Obsidian requires): build `transcribe-cli` for `macos-arm64` (`metal`), `linux-x64-vulkan`, `linux-x64-cpu` (built on Ubuntu 24.04, so glibc 2.39+); attach them with SHA-256 sums, plus `main.js`, `manifest.json` and `styles.css`, to the GitHub release.
 
 ### Testing
 

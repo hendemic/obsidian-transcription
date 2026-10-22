@@ -42,7 +42,7 @@ jobs:
           - asset: transcribe-cli-macos-arm64
             # Apple Silicon runner.
             os: macos-14
-            features: metal,coreml
+            features: metal
           - asset: transcribe-cli-linux-x64-vulkan
             # Linux builds use ubuntu-24.04, so the binaries need glibc 2.39+: the prebuilt ONNX
             # Runtime that ort links statically needs glibc 2.38+ and fails to link on 22.04.

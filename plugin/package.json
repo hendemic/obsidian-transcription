@@ -1,6 +1,6 @@
 {
 	"name": "local-whisper-transcribe",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"description": "Transcribe embedded audio locally with Whisper.",
 	"main": "main.js",
 	"type": "module",
