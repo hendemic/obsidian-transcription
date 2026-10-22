@@ -1,7 +1,7 @@
 {
 	"id": "local-whisper-transcribe",
 	"name": "Local Whisper Transcribe",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"minAppVersion": "1.4.0",
 	"description": "Transcribe embedded audio locally with Whisper, on your own GPU.",
 	"author": "Michael Henderson",
