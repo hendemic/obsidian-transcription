@@ -92,6 +92,54 @@ pub struct WhisperCppConfig {
 /// for best accuracy; wider beams cost a lot more time for little gain.
 const BEAM_SIZE: i32 = 5;
 
+/// Checks the ggml file header before whisper.cpp sees the file.
+///
+/// whisper.cpp reads the header without bounds checks, so a truncated file
+/// can crash the process inside model loading on some CPUs, before
+/// [`check_model_dimensions`] gets a chance to run. The header is the magic
+/// `0x67676d6c` followed by eleven little-endian `i32`s: ten dimensions, which
+/// must be positive, and the ftype, which must not be negative.
+fn check_model_header(path: &Path) -> Result<(), String> {
+    use std::io::Read;
+
+    const MAGIC: u32 = 0x6767_6d6c;
+    const FIELDS: [&str; 11] = [
+        "n_vocab",
+        "n_audio_ctx",
+        "n_audio_state",
+        "n_audio_head",
+        "n_audio_layer",
+        "n_text_ctx",
+        "n_text_state",
+        "n_text_head",
+        "n_text_layer",
+        "n_mels",
+        "ftype",
+    ];
+
+    let mut header = [0u8; 4 + 4 * FIELDS.len()];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut header))
+        .map_err(|e| format!("cannot read model header: {e}"))?;
+    let word = |i: usize| <[u8; 4]>::try_from(&header[i * 4..i * 4 + 4]).unwrap();
+
+    if u32::from_le_bytes(word(0)) != MAGIC {
+        return Err("not a ggml whisper model (bad magic)".to_string());
+    }
+    for (i, name) in FIELDS.iter().enumerate() {
+        let value = i32::from_le_bytes(word(i + 1));
+        let ok = if *name == "ftype" {
+            value >= 0
+        } else {
+            value > 0
+        };
+        if !ok {
+            return Err(format!("{name} is {value}"));
+        }
+    }
+    Ok(())
+}
+
 /// Rejects models whose hyperparameters are zero.
 ///
 /// whisper.cpp accepts a file with a valid magic but no tensors ("assuming
@@ -164,6 +212,11 @@ impl WhisperCpp {
             .map(NonZeroUsize::get)
             .unwrap_or_else(default_threads);
         let n_threads = i32::try_from(n_threads).unwrap_or(i32::MAX);
+
+        check_model_header(model_path).map_err(|reason| Error::InvalidModel {
+            path: model_path.to_path_buf(),
+            reason,
+        })?;
 
         let ctx = WhisperContext::new_with_params(model_path, WhisperContextParameters::default())
             .map_err(|source| Error::ModelLoad {
@@ -367,6 +420,69 @@ impl Transcriber for WhisperCpp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn header_file(name: &str, bytes: &[u8]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("engine-header-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    fn header(fields: [i32; 11]) -> Vec<u8> {
+        let mut bytes = 0x6767_6d6c_u32.to_le_bytes().to_vec();
+        for f in fields {
+            bytes.extend_from_slice(&f.to_le_bytes());
+        }
+        bytes
+    }
+
+    // large-v3 hyperparameters, f16.
+    const LARGE_V3: [i32; 11] = [51866, 1500, 1280, 20, 32, 448, 1280, 20, 32, 128, 1];
+
+    #[test]
+    fn header_of_a_real_model_shape_is_accepted() {
+        let path = header_file("ok.bin", &header(LARGE_V3));
+        assert_eq!(check_model_header(&path), Ok(()));
+    }
+
+    #[test]
+    fn truncated_header_is_rejected() {
+        let path = header_file("short.bin", &[0x6C, 0x6D, 0x67, 0x67, 0, 0, 0, 0]);
+        let err = check_model_header(&path).unwrap_err();
+        assert!(err.contains("cannot read model header"), "{err}");
+    }
+
+    #[test]
+    fn bad_magic_is_rejected() {
+        let mut bytes = header(LARGE_V3);
+        bytes[0] = b'x';
+        let path = header_file("magic.bin", &bytes);
+        assert!(check_model_header(&path).unwrap_err().contains("bad magic"));
+    }
+
+    #[test]
+    fn zero_dimension_is_rejected_by_name() {
+        let mut fields = LARGE_V3;
+        fields[4] = 0;
+        let path = header_file("zero.bin", &header(fields));
+        assert_eq!(
+            check_model_header(&path),
+            Err("n_audio_layer is 0".to_string())
+        );
+    }
+
+    #[test]
+    fn f32_ftype_zero_is_accepted_but_negative_is_not() {
+        let mut fields = LARGE_V3;
+        fields[10] = 0;
+        assert_eq!(
+            check_model_header(&header_file("f32.bin", &header(fields))),
+            Ok(())
+        );
+        fields[10] = -1;
+        assert!(check_model_header(&header_file("neg.bin", &header(fields))).is_err());
+    }
 
     #[test]
     fn cpu_build_reports_cpu_backend() {
