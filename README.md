@@ -4,6 +4,14 @@ Transcribe audio recordings in your notes with Whisper, entirely on your machine
 
 Desktop only: macOS (Apple Silicon) and Linux (x64, glibc 2.39+, e.g. Ubuntu 24.04 or newer).
 
+## Install
+
+Not in the community plugin list yet. To install by hand:
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/hendemic/obsidian-transcription/releases/latest).
+2. Put them in `<your vault>/.obsidian/plugins/local-whisper-transcribe/`.
+3. In Obsidian, open **Settings → Community plugins** and enable **Local Whisper Transcribe**.
+
 ## Use
 
 Right-click an audio embed in a note, or an audio file in the file explorer, and choose **Transcribe**. The first time, the plugin asks to download what it needs (about 350 MB).
