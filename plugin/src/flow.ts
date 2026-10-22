@@ -60,6 +60,8 @@ export class TranscribeFlow {
 			const args = buildTranscribeArgs({
 				modelPath: paths.model,
 				vadModelPath: paths.vad,
+				paragraphModelPath: paths.paragraphModel,
+				paragraphTokenizerPath: paths.paragraphTokenizer,
 				language: settings.language,
 				prompt: settings.initialPrompt,
 				pauseGapSeconds: settings.pauseGapSeconds,

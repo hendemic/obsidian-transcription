@@ -5,7 +5,15 @@
 // - Running `nvidia-smi` (manager.ts, needs the real binary); resolveLinuxBackend gets its result as input.
 // - Downloads, extraction and chmod (download.ts / manager.ts): network and filesystem side effects.
 import { describe, expect, it } from "vitest";
-import { MODEL, PLUGIN_ID, SIDECAR_ASSET_NAMES, VAD_MODEL, COREML_ENCODER } from "./config";
+import {
+	COREML_ENCODER,
+	MODEL,
+	PARAGRAPH_MODEL,
+	PARAGRAPH_TOKENIZER,
+	PLUGIN_ID,
+	SIDECAR_ASSET_NAMES,
+	VAD_MODEL,
+} from "./config";
 import {
 	buildAssetPlan,
 	findAsset,
@@ -189,12 +197,19 @@ describe("buildAssetPlan", () => {
 	const mac: PlanInput = { ...linux, platform: "darwin", arch: "arm64" };
 	const ids = (input: PlanInput): string[] => buildAssetPlan(input).map((a) => a.id);
 
-	it("plans model, VAD and sidecar on Linux, without the Core ML encoder", () => {
-		expect(ids(linux).sort()).toEqual(["model", "sidecar", "vad"]);
+	it("plans model, VAD, paragraph model and sidecar on Linux, without the Core ML encoder", () => {
+		expect(ids(linux).sort()).toEqual(["model", "paragraph-model", "paragraph-tokenizer", "sidecar", "vad"]);
 	});
 
-	it("plans model, VAD, Core ML encoder and sidecar on macOS", () => {
-		expect(ids(mac).sort()).toEqual(["coreml", "model", "sidecar", "vad"]);
+	it("plans model, VAD, paragraph model, Core ML encoder and sidecar on macOS", () => {
+		expect(ids(mac).sort()).toEqual([
+			"coreml",
+			"model",
+			"paragraph-model",
+			"paragraph-tokenizer",
+			"sidecar",
+			"vad",
+		]);
 	});
 
 	it("puts models under <dataDir>/models with pinned checksums", () => {
@@ -207,6 +222,15 @@ describe("buildAssetPlan", () => {
 		expect(findAsset(plan, "vad")).toMatchObject({
 			dest: `/d/models/${VAD_MODEL.fileName}`,
 			sha256: VAD_MODEL.sha256,
+		});
+		expect(findAsset(plan, "paragraph-model")).toMatchObject({
+			dest: `/d/models/${PARAGRAPH_MODEL.fileName}`,
+			url: PARAGRAPH_MODEL.url,
+			sha256: PARAGRAPH_MODEL.sha256,
+		});
+		expect(findAsset(plan, "paragraph-tokenizer")).toMatchObject({
+			dest: `/d/models/${PARAGRAPH_TOKENIZER.fileName}`,
+			sha256: PARAGRAPH_TOKENIZER.sha256,
 		});
 	});
 
@@ -248,7 +272,12 @@ describe("buildAssetPlan", () => {
 	});
 
 	it("still plans the models when the sidecar is overridden", () => {
-		expect(ids({ ...linux, sidecarOverridden: true }).sort()).toEqual(["model", "vad"]);
+		expect(ids({ ...linux, sidecarOverridden: true }).sort()).toEqual([
+			"model",
+			"paragraph-model",
+			"paragraph-tokenizer",
+			"vad",
+		]);
 	});
 
 	it("allows the CPU backend when the sidecar is overridden", () => {
@@ -322,7 +351,12 @@ describe("missingAssets", () => {
 
 	it("lists only the absent ones", () => {
 		const present = new Set([findAsset(linuxPlan, "model")?.dest]);
-		expect(missingAssets(linuxPlan, (p) => present.has(p)).map((a) => a.id).sort()).toEqual(["sidecar", "vad"]);
+		expect(missingAssets(linuxPlan, (p) => present.has(p)).map((a) => a.id).sort()).toEqual([
+			"paragraph-model",
+			"paragraph-tokenizer",
+			"sidecar",
+			"vad",
+		]);
 	});
 
 	it("treats the Core ML encoder as missing when only its zip exists", () => {

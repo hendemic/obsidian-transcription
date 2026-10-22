@@ -18,6 +18,7 @@ vulkan = ["engine-whispercpp/vulkan"]
 [dependencies]
 transcribe-core.workspace = true
 engine-whispercpp.workspace = true
+embed-onnx.workspace = true
 clap.workspace = true
 thiserror.workspace = true
 

@@ -81,6 +81,9 @@ export function clampPauseGapSeconds(seconds: number): number {
 export interface TranscribeArgsInput {
 	modelPath: string;
 	vadModelPath?: string;
+	/** The paragraph model and its tokenizer; both or neither are passed. */
+	paragraphModelPath?: string;
+	paragraphTokenizerPath?: string;
 	/** "auto" or empty means auto-detect (flag omitted). */
 	language?: string;
 	prompt?: string;
@@ -92,6 +95,9 @@ export function buildTranscribeArgs(input: TranscribeArgsInput): string[] {
 	// Paths are absolute and the gap is numeric, so they keep the separate-argument form.
 	const args = ["transcribe", "--model", input.modelPath];
 	if (input.vadModelPath) args.push("--vad-model", input.vadModelPath);
+	if (input.paragraphModelPath && input.paragraphTokenizerPath) {
+		args.push("--paragraph-model", input.paragraphModelPath, "--paragraph-tokenizer", input.paragraphTokenizerPath);
+	}
 	const language = input.language?.trim();
 	if (language && language.toLowerCase() !== "auto") args.push(`--language=${language}`);
 	const prompt = input.prompt?.trim();

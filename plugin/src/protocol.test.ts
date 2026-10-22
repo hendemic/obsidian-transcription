@@ -229,6 +229,8 @@ describe("buildTranscribeArgs", () => {
 			buildTranscribeArgs({
 				modelPath: "/m/model.bin",
 				vadModelPath: "/m/vad.bin",
+				paragraphModelPath: "/m/p.onnx",
+				paragraphTokenizerPath: "/m/t.json",
 				language: "de",
 				prompt: "Anke, Jörg",
 				pauseGapSeconds: 2.5,
@@ -239,11 +241,24 @@ describe("buildTranscribeArgs", () => {
 			"/m/model.bin",
 			"--vad-model",
 			"/m/vad.bin",
+			"--paragraph-model",
+			"/m/p.onnx",
+			"--paragraph-tokenizer",
+			"/m/t.json",
 			"--language=de",
 			"--prompt=Anke, Jörg",
 			"--pause-gap-ms",
 			"2500",
 		]);
+	});
+
+	it("passes the paragraph model only together with its tokenizer", () => {
+		expect(buildTranscribeArgs({ modelPath: "m", paragraphModelPath: "/m/p.onnx" })).not.toContain(
+			"--paragraph-model",
+		);
+		expect(buildTranscribeArgs({ modelPath: "m", paragraphTokenizerPath: "/m/t.json" })).not.toContain(
+			"--paragraph-tokenizer",
+		);
 	});
 
 	it("keeps paths with spaces as a single argument", () => {

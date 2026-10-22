@@ -1,6 +1,6 @@
 # Local Whisper Transcribe
 
-An Obsidian plugin that transcribes audio recordings embedded in your notes, locally, using Whisper large-v3 on your own GPU. Your audio never leaves your machine. The transcript is inserted as plain text, broken into paragraphs at natural pauses. It is aimed at spoken journal entries, where accuracy matters more than speed.
+An Obsidian plugin that transcribes audio recordings embedded in your notes, locally, using Whisper large-v3 on your own GPU. Your audio never leaves your machine. The transcript is inserted as plain text, broken into paragraphs where the topic shifts, using pauses to settle borderline cases. It is aimed at spoken journal entries, where accuracy matters more than speed.
 
 Desktop only. Supported: macOS (Apple Silicon) and Linux (x64).
 
@@ -18,7 +18,7 @@ Supported audio formats are whatever Obsidian's built-in player decodes: m4a, mp
 | --- | --- |
 | Language | `auto` (default) or a code such as `en`. |
 | Initial prompt | Names or terms to bias the transcript toward. |
-| Pause gap (seconds) | A silence at least this long after a sentence starts a new paragraph. Pauses in the middle of a sentence never do. Default 1.8. |
+| Pause gap (seconds) | Only used if the paragraph model is missing or fails to load: then a silence at least this long after a sentence starts a new paragraph. Pauses in the middle of a sentence never do. Default 1.8. |
 | GPU backend (Linux only) | Auto, CUDA, Vulkan, or CPU. Auto uses CUDA only if `nvidia-smi` is on your PATH and `ldconfig -p` lists both `libcudart.so.12` and `libcublas.so.12`; otherwise (including when `ldconfig` is unavailable) it uses Vulkan. CPU downloads a build without GPU support, which is much slower. |
 | Sidecar path override | Use your own `transcribe-cli` binary instead of the downloaded one (for development). |
 | Models and engine | Shows what is downloaded and lets you download what is missing. |
@@ -33,6 +33,7 @@ The plugin does nothing on the network until you click **Download** in its setti
 | --- | --- | --- | --- |
 | Whisper large-v3 model (`ggml-large-v3.bin`) | [Hugging Face, ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | about 3.1 GB | all |
 | Silero VAD model (`ggml-silero-v5.1.2.bin`) | [Hugging Face, ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad) | about 0.9 MB | all |
+| Paragraph model (`paragraph-minilm-l12-int8.onnx`, int8 ONNX export of paraphrase-multilingual-MiniLM-L12-v2) and its tokenizer (`paragraph-minilm-l12-tokenizer.json`) | [Hugging Face, sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2) | about 118 MB + 9 MB | all |
 | Core ML encoder (`ggml-large-v3-encoder.mlmodelc.zip`, extracted) | [Hugging Face, ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) | about 1.2 GB | macOS only |
 | Transcription engine (`transcribe-cli-<platform>`) | [GitHub releases of hendemic/obsidian-transcription](https://github.com/hendemic/obsidian-transcription/releases), tag `v<plugin version>`, checksums from the release's `SHA256SUMS` | small | macOS arm64, Linux x64 (CUDA, Vulkan or CPU) |
 

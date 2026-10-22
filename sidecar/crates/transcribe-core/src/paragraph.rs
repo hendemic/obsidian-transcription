@@ -39,27 +39,38 @@ impl Default for PauseGap {
 
 impl Paragrapher for PauseGap {
     fn paragraphs(&self, sentences: &[Sentence]) -> Vec<String> {
-        let mut paragraphs = Vec::new();
-        let mut current = String::new();
-
-        for sentence in sentences {
-            let text = clean_text(&sentence.text);
-            if !text.is_empty() {
-                if !current.is_empty() {
-                    current.push(' ');
-                }
-                current.push_str(&text);
-            }
-            if sentence.pause_after >= self.min_gap && !current.is_empty() {
-                paragraphs.push(std::mem::take(&mut current));
-            }
-        }
-
-        if !current.is_empty() {
-            paragraphs.push(current);
-        }
-        paragraphs
+        assemble(
+            sentences
+                .iter()
+                .map(|s| (s.text.as_str(), s.pause_after >= self.min_gap)),
+        )
     }
+}
+
+/// Joins sentences into paragraphs, ending a paragraph after each sentence
+/// whose flag is set. Sentences are cleaned and joined with a single space;
+/// empty ones are dropped, but a break after one still applies.
+pub(crate) fn assemble<'a>(sentences: impl IntoIterator<Item = (&'a str, bool)>) -> Vec<String> {
+    let mut paragraphs = Vec::new();
+    let mut current = String::new();
+
+    for (text, break_after) in sentences {
+        let text = clean_text(text);
+        if !text.is_empty() {
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(&text);
+        }
+        if break_after && !current.is_empty() {
+            paragraphs.push(std::mem::take(&mut current));
+        }
+    }
+
+    if !current.is_empty() {
+        paragraphs.push(current);
+    }
+    paragraphs
 }
 
 #[cfg(test)]
