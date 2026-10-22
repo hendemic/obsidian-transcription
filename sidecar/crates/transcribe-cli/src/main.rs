@@ -80,12 +80,19 @@ fn main() -> ExitCode {
 /// clap's error text without the "error: " prefix, usage and help hints,
 /// on one line.
 fn summarize_clap_error(e: &clap::Error) -> String {
+    use clap::error::ErrorKind;
+    if matches!(
+        e.kind(),
+        ErrorKind::MissingSubcommand | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    ) {
+        return "a command is required (transcribe or probe)".to_string();
+    }
     let rendered = e.render().to_string();
     rendered
         .lines()
         .take_while(|line| !line.starts_with("Usage:"))
         .map(str::trim)
-        .filter(|line| !line.is_empty())
+        .filter(|line| !line.is_empty() && !line.starts_with("For more information"))
         .collect::<Vec<_>>()
         .join(" ")
         .trim_start_matches("error: ")

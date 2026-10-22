@@ -74,7 +74,7 @@ impl TimeMap {
             return first.1.saturating_sub(first.0 - processed);
         }
         if processed >= last.0 {
-            return last.1 + (processed - last.0);
+            return last.1.saturating_add(processed - last.0);
         }
         // First anchor strictly after `processed`; there is one before it.
         let i = self.points.partition_point(|&(p, _)| p <= processed);
@@ -499,9 +499,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: TimeMap::to_original_samples overflows (panics in debug builds) for \
-                huge timestamps when the map's last anchor has original > processed; \
-                `last.1 + (processed - last.0)` is unchecked"]
     fn huge_centiseconds_do_not_panic() {
         let (_, map) = splice(&ramp(10 * SR), &[span(3 * SR, 4 * SR)], 0);
         let t = map.to_original(i64::MAX);
