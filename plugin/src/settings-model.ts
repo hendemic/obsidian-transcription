@@ -1,8 +1,9 @@
 // Plugin settings shape and merging (pure; no Obsidian imports).
 import { clampPauseGapSeconds } from "./protocol";
 
-export type LinuxBackend = "auto" | "cuda" | "vulkan" | "cpu";
-export const LINUX_BACKENDS: readonly LinuxBackend[] = ["auto", "cuda", "vulkan", "cpu"];
+/** Which Linux build to use: Vulkan runs on AMD, NVIDIA and Intel GPUs; CPU is the fallback. */
+export type LinuxBackend = "vulkan" | "cpu";
+export const LINUX_BACKENDS: readonly LinuxBackend[] = ["vulkan", "cpu"];
 
 export interface LocalWhisperSettings {
 	/** ISO code such as "en", or "auto" to detect. */
@@ -18,7 +19,7 @@ export const DEFAULT_SETTINGS: LocalWhisperSettings = {
 	language: "auto",
 	initialPrompt: "",
 	pauseGapSeconds: 1.8,
-	linuxBackend: "auto",
+	linuxBackend: "vulkan",
 	sidecarPath: "",
 };
 

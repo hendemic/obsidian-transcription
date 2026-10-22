@@ -42,15 +42,10 @@ jobs:
             # Apple Silicon runner.
             os: macos-14
             features: metal,coreml
-          - asset: transcribe-cli-linux-x64-cuda
+          - asset: transcribe-cli-linux-x64-vulkan
             # Linux builds use ubuntu-24.04, so the binaries need glibc 2.39+: the prebuilt ONNX
             # Runtime that ort links statically needs glibc 2.38+ and fails to link on 22.04.
-            # Targets CUDA 12.6. The binary links the CUDA runtime/cuBLAS dynamically, so users need
-            # an NVIDIA driver 560+ and the CUDA 12.6+ runtime libraries installed.
-            # Nothing from the CUDA toolkit is bundled into the binary or the release.
-            os: ubuntu-24.04
-            features: cuda
-          - asset: transcribe-cli-linux-x64-vulkan
+            # Vulkan covers AMD, NVIDIA and Intel GPUs; there is no CUDA or ROCm build.
             os: ubuntu-24.04
             features: vulkan
           - asset: transcribe-cli-linux-x64-cpu
@@ -68,18 +63,6 @@ jobs:
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev
-
-      - name: Install CUDA toolkit 12.6
-        if: matrix.asset == 'transcribe-cli-linux-x64-cuda'
-        run: |
-          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
-          sudo apt-get update
-          sudo apt-get install -y cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcublas-dev-12-6
-          echo "/usr/local/cuda-12.6/bin" >> "$GITHUB_PATH"
-          echo "CUDA_PATH=/usr/local/cuda-12.6" >> "$GITHUB_ENV"
-          # Common GPU generations only (Turing to Ada); keeps build time down.
-          echo "CMAKE_CUDA_ARCHITECTURES=75;80;86;89" >> "$GITHUB_ENV"
 
       - name: Install Vulkan headers and glslc
         if: matrix.asset == 'transcribe-cli-linux-x64-vulkan'
@@ -159,7 +142,7 @@ jobs:
         run: |
           ls -l
           # Format "<hex>  <filename>", read by the plugin at download time.
-          sha256sum transcribe-cli-macos-arm64 transcribe-cli-linux-x64-cuda \
+          sha256sum transcribe-cli-macos-arm64 \
             transcribe-cli-linux-x64-vulkan transcribe-cli-linux-x64-cpu > SHA256SUMS
           cat SHA256SUMS
       - name: Create draft release
@@ -170,6 +153,6 @@ jobs:
         working-directory: artifacts
         run: |
           gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes \
-            transcribe-cli-macos-arm64 transcribe-cli-linux-x64-cuda \
+            transcribe-cli-macos-arm64 \
             transcribe-cli-linux-x64-vulkan transcribe-cli-linux-x64-cpu \
             SHA256SUMS main.js manifest.json styles.css

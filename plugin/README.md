@@ -12,7 +12,7 @@ Right-click an audio embed in a note, or an audio file in the file explorer, and
 
 - **Language:** `auto`, or a code such as `en`.
 - **Initial prompt:** names or terms the transcript should spell correctly.
-- **GPU backend (Linux):** Auto uses CUDA when available, otherwise Vulkan. CUDA needs NVIDIA driver 560+ and the CUDA 12.6+ runtime; with only the driver, choose Vulkan.
+- **GPU backend (Linux):** GPU (Vulkan, for AMD, NVIDIA and Intel graphics) or CPU.
 
 ## Downloads and privacy
 
@@ -28,4 +28,4 @@ Nothing is downloaded until you confirm. Every file is checked against a SHA-256
 
 Files are stored outside your vault, in `~/Library/Application Support/local-whisper-transcribe/` (macOS) or `~/.local/share/local-whisper-transcribe/` (Linux). Delete that folder to remove them.
 
-The transcription engine is a native program the plugin runs locally. The plugin also runs `nvidia-smi` and `ldconfig -p` on Linux to detect CUDA, and `unzip` on macOS to extract the Core ML encoder.
+The transcription engine is a native program the plugin runs locally. On macOS the plugin also runs `unzip` to extract the Core ML encoder.
