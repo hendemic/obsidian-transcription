@@ -27,6 +27,21 @@ describe("ProgressEstimator", () => {
 		expect(e.estimate(60_000).percent).toBe(39);
 	});
 
+	it("keeps time for the remaining windows while a report is overdue", () => {
+		const e = new ProgressEstimator();
+		e.report(0, 0);
+		e.report(25, 10_000); // 2.5% per second, 25% per window
+		// The 50% report is overdue, so two more windows (50%) are still to come: 20 s.
+		expect(e.estimate(60_000).secondsLeft).toBe(20);
+	});
+
+	it("says the last window is nearly done once it is overdue", () => {
+		const e = new ProgressEstimator();
+		e.report(0, 0);
+		e.report(50, 10_000);
+		expect(e.estimate(60_000).secondsLeft).toBe(0);
+	});
+
 	it("never goes backwards when a report lands below the shown estimate", () => {
 		const e = new ProgressEstimator();
 		e.report(0, 0);
@@ -68,9 +83,12 @@ describe("formatTimeLeft", () => {
 	it.each([
 		[null, "estimating time left"],
 		[3, "almost done"],
+		[7, "about 10 s left"],
 		[12, "about 15 s left"],
 		[45, "about 45 s left"],
-		[90, "about 2 min left"],
+		[90, "about 1 min 30 s left"],
+		[118, "about 2 min left"],
+		[125, "about 2 min 10 s left"],
 		[600, "about 10 min left"],
 	])("formats %j as %j", (seconds, text) => {
 		expect(formatTimeLeft(seconds)).toBe(text);

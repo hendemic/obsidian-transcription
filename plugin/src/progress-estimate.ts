@@ -53,9 +53,13 @@ export class ProgressEstimator {
 		// Stay short of where the next report is likely to land, so the bar never jumps backwards.
 		const ceiling = Math.min(99, this.largestStep > 0 ? this.lastPercent + this.largestStep * 0.95 : 95);
 		this.shown = Math.max(this.shown, Math.min(extrapolated, ceiling));
+		// When a report is overdue (a slow window), the windows after it are still to come, so time
+		// left must not fall to zero while waiting.
+		const projected = (100 - extrapolated) / rate;
+		const afterNextReport = this.largestStep > 0 ? (100 - this.lastPercent - this.largestStep) / rate : 0;
 		return {
 			percent: Math.floor(this.shown),
-			secondsLeft: Math.max(0, (100 - extrapolated) / rate / 1000),
+			secondsLeft: Math.max(0, projected, afterNextReport) / 1000,
 		};
 	}
 
@@ -70,7 +74,13 @@ export class ProgressEstimator {
 
 export function formatTimeLeft(seconds: number | null): string {
 	if (seconds === null) return "estimating time left";
-	if (seconds < 10) return "almost done";
+	if (seconds < 5) return "almost done";
 	if (seconds < 60) return `about ${Math.ceil(seconds / 5) * 5} s left`;
+	if (seconds < 300) {
+		const rounded = Math.round(seconds / 10) * 10;
+		const min = Math.floor(rounded / 60);
+		const sec = rounded % 60;
+		return sec === 0 ? `about ${min} min left` : `about ${min} min ${sec} s left`;
+	}
 	return `about ${Math.round(seconds / 60)} min left`;
 }
